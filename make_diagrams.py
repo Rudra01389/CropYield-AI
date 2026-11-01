@@ -91,13 +91,13 @@ def ann_architecture():
     import tensorflow as tf
     model = tf.keras.models.load_model(C.ROOT / "models" / "ann_model.keras", compile=False)
     n_in, params = model.input_shape[1], model.count_params()
-    fig, ax = canvas(11, 6.4, "ANN Architecture (saved model)")
+    fig, ax = canvas(11, 7.0, "ANN Architecture (saved model)")
     layers = [(1.6, 8, f"Input layer\n{n_in} features\n5 numeric + 34 district\none-hot", "#1E88E5"),
               (4.6, 8, "Hidden layer 1\nDense 64\nReLU", G_MID), (7.3, 6, "Hidden layer 2\nDense 32\nReLU", G_MID),
               (9.9, 1, "Output layer\nDense 1, linear\nyield (t/ha)", "#F9A825")]
     cols = []
     for x, n, label, color in layers:
-        ys = [3.6 + (i - (n - 1) / 2) * 0.5 for i in range(n)]
+        ys = [3.3 + (i - (n - 1) / 2) * 0.46 for i in range(n)]
         cols.append((x, ys))
     for (x1, y1s), (x2, y2s) in zip(cols[:-1], cols[1:]):
         for ya in y1s:
@@ -106,10 +106,10 @@ def ann_architecture():
     for (x, ys), (_, _, label, color) in zip(cols, layers):
         for y in ys:
             ax.add_patch(Circle((x, y), 0.17, fc=color, ec="white", lw=1))
-        ax.text(x, 1.0, label, ha="center", va="center", fontsize=9, linespacing=1.35, color="#14231A")
-    ax.text(5.5, 5.55, f"Total trainable parameters: {params:,}   |   Adam (lr 1e-3), MSE loss, batch 32, "
+        ax.text(x, 0.9, label, ha="center", va="center", fontsize=9, linespacing=1.35, color="#14231A")
+    ax.text(5.5, 6.0, f"Total trainable parameters: {params:,}   |   Adam (lr 1e-3), MSE loss, batch 32, "
             "early stopping (patience 30)", ha="center", fontsize=9.5, color=G_DARK)
-    ax.text(5.5, 5.2, "Only a subset of the neurons is drawn; layer sizes are as labelled.", ha="center",
+    ax.text(5.5, 5.62, "Only a subset of the neurons is drawn; layer sizes are as labelled.", ha="center",
             fontsize=8, style="italic", color=GREY)
     fig.savefig(OUT / "03_ann_architecture.png", dpi=150, bbox_inches="tight"); plt.close(fig)
     print("ANN input features:", n_in, "parameters:", params)

@@ -142,16 +142,21 @@ def test_predict_button_for_districts(app, district):
     assert any("Estimated production" in k for k in labels)
 
 
+def _num(at, label):
+    """Find a number input by its label (robust to layout changes)."""
+    return next(n for n in at.number_input if n.label.startswith(label))
+
+
 def test_app_rejects_zero_area(app):
     at = app.run()
-    at.number_input[1].set_value(0.0)
+    _num(at, "Cultivated area").set_value(0.0)
     at.button[0].click().run()
     assert at.error and not at.exception and not at.metric
 
 
 def test_app_warns_on_extrapolation(app):
     at = app.run()
-    at.number_input[2].set_value(6000.0)
+    _num(at, "Kharif rainfall").set_value(6000.0)
     at.button[0].click().run()
     assert at.warning and not at.exception
 
@@ -162,5 +167,5 @@ def test_performance_page_metrics_come_from_csv(app):
     comp = data.load_comparison()
     ann = comp[(comp.model == "ANN (all features)") & (comp.split == "test")].iloc[0]
     shown = {m.label: m.value for m in at.metric}
-    assert shown["ANN test RMSE"] == f"{ann.RMSE:.3f} t/ha"
-    assert shown["ANN test R²"] == f"{ann.R2:.3f}"
+    assert shown["ANN test RMSE"] == f"{ann.RMSE:.4f} t/ha"
+    assert shown["ANN test R²"] == f"{ann.R2:.4f}"

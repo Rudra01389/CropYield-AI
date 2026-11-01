@@ -196,11 +196,11 @@ The pipeline is a set of re-runnable Python scripts (`fetch_coordinates.py`, `fe
 | Testing | pytest + Streamlit AppTest |
 
 ## 17. Streamlit Application Features
-Run with `streamlit run app.py`. Sidebar navigation with four pages:
-1. **Predict yield**: choose a district, then enter year, area, rainfall, temperature and humidity (defaults are that district's historical medians). The result shows predicted yield (t/ha), an *estimated* production (yield × area), and the district's historical average for context. Inputs are validated (e.g. area > 0, humidity 0–100 %), and values outside the training range give an extrapolation warning.
-2. **Data & trends**: yearly mean yield with optional district overlays, and district-wise average yield.
-3. **Model performance**: metric cards, the full metrics table, RMSE comparison and an actual-vs-predicted plot, all read from the saved Phase 3 results. It displays a warning when the ANN does not beat the baselines.
-4. **About & limitations**: architecture, input ranges, data sources, limitations and disclaimer.
+Run with `streamlit run app.py`. A forest-green dashboard with sidebar navigation and four pages (styling in `src/style.css`, reusable components in `src/ui.py`):
+1. **Predict yield**: choose a district, then enter year, area, rainfall, temperature and humidity (defaults are that district's historical medians). The result cards show predicted yield (t/ha), an *estimated* production (yield × area) and the district's historical average; a chart places the estimate against the district's reported history. Inputs are validated (e.g. area > 0, humidity 0–100 %), and values outside the training range show a clear extrapolation warning.
+2. **Data & trends** (4 tabs): yield over time with district overlays; district comparison (mean and range); weather vs yield scatter plots with an option to remove district averages; weather over time.
+3. **Model performance** (4 tabs): metric cards, a banner stating that the ANN underperforms the baselines on the test years, the full metrics table, RMSE/R² comparison charts, actual-vs-predicted and residual plots for any model, training/validation loss curves, and ANN seed variability. All values are read from the saved Phase 3 results.
+4. **About & limitations**: overview, data sources, ANN architecture and workflow diagrams, technology stack and limitations.
 
 ## 18. Results and Discussion
 1. **Validation vs test.** The ANN was clearly best on the validation years (RMSE 0.424 vs 0.542–0.579 for the others), but on the test years it was slightly *worse* than the district-mean baseline (0.502 vs 0.486) and Linear Regression (0.489). The best test RMSE came from Linear Regression without weather (0.478). The ANN's advantage did not carry over to 2018–2019.

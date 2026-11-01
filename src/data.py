@@ -23,6 +23,15 @@ def load_predictions() -> pd.DataFrame:
     return pd.read_csv(ROOT / "reports" / "predictions.csv")
 
 
+def load_seed_results() -> pd.DataFrame:
+    return pd.read_csv(ROOT / "reports" / "ann_seed_results.csv")
+
+
+def diagram_image(name: str):
+    p = ROOT / "reports" / "diagrams" / name
+    return str(p) if p.exists() else None
+
+
 def loss_curve_image():
     p = ROOT / "reports" / "model_plots" / "01_loss_curves.png"
     return str(p) if p.exists() else None
