@@ -1,0 +1,225 @@
+{
+  "project": "CropYield AI",
+  "target": "yield_t_ha",
+  "target_units": "tonnes/hectare",
+  "input_features": [
+    "year",
+    "area_ha",
+    "rain_kharif_mm",
+    "temp_kharif_c",
+    "rh_kharif_pct",
+    "district"
+  ],
+  "production_used": false,
+  "split": {
+    "train": "1997-2015",
+    "val": "2016-2017",
+    "test": "2018-2019",
+    "n_train": 540,
+    "n_val": 51,
+    "n_test": 51,
+    "random_split": false
+  },
+  "preprocessing": {
+    "numeric": "StandardScaler",
+    "categorical": "OneHotEncoder(handle_unknown='ignore')",
+    "fit_on": "training rows only",
+    "encoded_feature_names": [
+      "year",
+      "area_ha",
+      "rain_kharif_mm",
+      "temp_kharif_c",
+      "rh_kharif_pct",
+      "district_AHMEDNAGAR",
+      "district_AKOLA",
+      "district_AMRAVATI",
+      "district_AURANGABAD",
+      "district_BEED",
+      "district_BHANDARA",
+      "district_BULDHANA",
+      "district_CHANDRAPUR",
+      "district_DHULE",
+      "district_GADCHIROLI",
+      "district_GONDIA",
+      "district_HINGOLI",
+      "district_JALGAON",
+      "district_JALNA",
+      "district_KOLHAPUR",
+      "district_LATUR",
+      "district_NAGPUR",
+      "district_NANDED",
+      "district_NANDURBAR",
+      "district_NASHIK",
+      "district_OSMANABAD",
+      "district_PALGHAR",
+      "district_PARBHANI",
+      "district_PUNE",
+      "district_RAIGAD",
+      "district_RATNAGIRI",
+      "district_SANGLI",
+      "district_SATARA",
+      "district_SINDHUDURG",
+      "district_SOLAPUR",
+      "district_THANE",
+      "district_WARDHA",
+      "district_WASHIM",
+      "district_YAVATMAL"
+    ]
+  },
+  "ann": {
+    "architecture": "Input -> Dense(64, relu) -> Dense(32, relu) -> Dense(1, linear); Adam(1e-3), MSE, batch 32, EarlyStopping(val_loss, patience 30)",
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "selected_seed": 0,
+    "selection_rule": "lowest validation loss",
+    "best_epoch": 14,
+    "epochs_run": 44
+  },
+  "ann_no_weather": {
+    "selected_seed": 2,
+    "best_epoch": 13
+  },
+  "district_mean_baseline": {
+    "fallback_for_unseen_district": 1.2111013338436865,
+    "means": {
+      "AHMEDNAGAR": 0.901,
+      "AKOLA": 0.6207,
+      "AMRAVATI": 0.5967,
+      "AURANGABAD": 0.6635,
+      "BEED": 0.424,
+      "BHANDARA": 1.3849,
+      "BULDHANA": 0.7881,
+      "CHANDRAPUR": 1.1829,
+      "DHULE": 0.8313,
+      "GADCHIROLI": 1.1579,
+      "GONDIA": 1.3103,
+      "HINGOLI": 0.4687,
+      "JALGAON": 1.0285,
+      "JALNA": 0.4559,
+      "KOLHAPUR": 2.6098,
+      "LATUR": 0.4351,
+      "NAGPUR": 1.2199,
+      "NANDED": 0.5335,
+      "NANDURBAR": 0.9546,
+      "NASHIK": 1.1289,
+      "OSMANABAD": 0.3363,
+      "PALGHAR": 2.4085,
+      "PARBHANI": 0.3898,
+      "PUNE": 1.2999,
+      "RAIGAD": 2.5109,
+      "RATNAGIRI": 2.6169,
+      "SANGLI": 2.1832,
+      "SATARA": 1.7028,
+      "SINDHUDURG": 2.7605,
+      "SOLAPUR": 0.6213,
+      "THANE": 2.1572,
+      "WARDHA": 0.7697,
+      "WASHIM": 0.7696,
+      "YAVATMAL": 0.7038
+    }
+  },
+  "metrics": [
+    {
+      "model": "District-mean baseline",
+      "split": "val",
+      "MAE": 0.4667,
+      "MSE": 0.3348,
+      "RMSE": 0.5786,
+      "R2": 0.6512,
+      "n": 51
+    },
+    {
+      "model": "District-mean baseline",
+      "split": "test",
+      "MAE": 0.4272,
+      "MSE": 0.2363,
+      "RMSE": 0.4861,
+      "R2": 0.7349,
+      "n": 51
+    },
+    {
+      "model": "Linear Regression",
+      "split": "val",
+      "MAE": 0.4307,
+      "MSE": 0.2938,
+      "RMSE": 0.542,
+      "R2": 0.6939,
+      "n": 51
+    },
+    {
+      "model": "Linear Regression",
+      "split": "test",
+      "MAE": 0.4229,
+      "MSE": 0.2395,
+      "RMSE": 0.4894,
+      "R2": 0.7313,
+      "n": 51
+    },
+    {
+      "model": "Linear Regression (no weather)",
+      "split": "val",
+      "MAE": 0.4459,
+      "MSE": 0.3053,
+      "RMSE": 0.5525,
+      "R2": 0.6819,
+      "n": 51
+    },
+    {
+      "model": "Linear Regression (no weather)",
+      "split": "test",
+      "MAE": 0.4228,
+      "MSE": 0.2286,
+      "RMSE": 0.4781,
+      "R2": 0.7436,
+      "n": 51
+    },
+    {
+      "model": "ANN (all features)",
+      "split": "val",
+      "MAE": 0.3373,
+      "MSE": 0.18,
+      "RMSE": 0.4242,
+      "R2": 0.8125,
+      "n": 51
+    },
+    {
+      "model": "ANN (all features)",
+      "split": "test",
+      "MAE": 0.3807,
+      "MSE": 0.2515,
+      "RMSE": 0.5015,
+      "R2": 0.7178,
+      "n": 51
+    },
+    {
+      "model": "ANN (no weather)",
+      "split": "val",
+      "MAE": 0.3437,
+      "MSE": 0.1816,
+      "RMSE": 0.4262,
+      "R2": 0.8107,
+      "n": 51
+    },
+    {
+      "model": "ANN (no weather)",
+      "split": "test",
+      "MAE": 0.4103,
+      "MSE": 0.2594,
+      "RMSE": 0.5093,
+      "R2": 0.7091,
+      "n": 51
+    }
+  ],
+  "versions": {
+    "tensorflow": "2.21.0",
+    "sklearn": "1.9.1",
+    "pandas": "3.1.0",
+    "numpy": "2.5.4"
+  },
+  "disclaimer": "Academic prototype; not a production forecasting system."
+}

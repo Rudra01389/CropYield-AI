@@ -1,0 +1,20 @@
+# Python environments
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# macOS
+.DS_Store
+
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# Unused weather files
+data/raw/weather_cache/
+data/raw/weather_monthly.csv
