@@ -25,7 +25,7 @@ Open http://localhost:8501. The app uses the already-trained model in `models/`;
 
 ## 3. Run the tests (optional, ~10 s)
 ```bash
-python -m pytest -q          # expected: 40 passed
+python -m pytest -q          # expected: 45 passed
 ```
 
 ## 4. Rebuild everything from scratch (optional)
@@ -41,17 +41,28 @@ python make_diagrams.py       # diagrams -> reports/diagrams/
 ```
 `train_models.py` retrains and overwrites the saved models; skip it unless you want to reproduce training.
 
-## New in Phase 6
+## Pages
+| Page | What it shows |
+|---|---|
+| **Dashboard** (landing) | Welcome, KPI cards (records, districts, crop, season), latest-season snapshot, model-accuracy gauge, project information, yield trend, district map, district averages, rainfall vs yield, top/bottom districts |
+| **Predict Yield** | Inputs, ANN estimate, estimated production, district average, CSV report, "Understanding the Prediction" (permutation importance) |
+| **Data & Trends** | Dataset overview, yield trends, district comparison, **yield map**, weather charts |
+| **Model Performance** | ANN architecture, split, RMSE/MAE/R², comparison with Linear Regression and the district-mean baseline, actual vs predicted, loss curves, seed variability |
+| **About the Project** | Overview, problem statement, objectives, data sources, technology, architecture/workflow, limitations and future scope |
+
+The sidebar is open by default on desktop; on a phone it starts collapsed and can be opened with the **»** control.
+
+## Features added in Phase 6
 | Feature | Where | How to use |
 |---|---|---|
-| District yield map | **Data & trends → Yield map** | Hover a district for name, mean yield, records and years; use *Highlight a district* to outline one. |
-| Understanding the Prediction | **Predict yield** (bottom of page) | Plain-language input descriptions and a permutation-importance chart computed with the saved ANN on the 2018-19 test rows. Importance shows predictive reliance, not causation. |
-| Prediction report (CSV) | **Predict yield → Download Prediction Report** | Appears after a successful prediction; one-row CSV with your inputs, the ANN estimate, estimated production and the district average. |
+| District yield map | **Data & Trends → Yield map** | Hover a district for name, mean yield, records and years; use *Highlight a district* to outline one. |
+| Understanding the Prediction | **Predict Yield** (bottom of page) | Plain-language input descriptions and a permutation-importance chart computed with the saved ANN on the 2018-19 test rows. Importance shows predictive reliance, not causation. |
+| Prediction report (CSV) | **Predict Yield → Download Prediction Report** | Appears after a successful prediction; one-row CSV with your inputs, the ANN estimate, estimated production and the district average. |
 
 ## Project layout
 | Path | Purpose |
 |---|---|
-| `app.py`, `src/` | Streamlit app (Predict, Data & trends, Model performance, About); `predictor.py` model loader and validation, `interpret.py` permutation importance, `report.py` CSV report, `data.py` loaders, `ui.py` + `style.css` look and feel |
+| `app.py`, `src/` | Streamlit app (5 pages); `predictor.py` model loader and validation, `interpret.py` permutation importance, `report.py` CSV report, `data.py` loaders, `charts.py` shared charts and map, `ui.py` + `style.css` look and feel |
 | `models/` | `ann_model.keras`, `preprocessor.joblib`, `linear_regression_model.joblib`, `model_metadata.json` (+ no-weather ANN) |
 | `data/` | original CSVs, `raw/` downloads, `processed/` datasets (`ann_ready_dataset.csv` = final) |
 | `reports/` | data-quality, preprocessing and model-evaluation reports, metrics CSVs, `eda/`, `model_plots/`, `diagrams/` |

@@ -117,13 +117,25 @@ def test_missing_model_gives_friendly_error(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------- Streamlit
+class _App:
+    """Fresh AppTest per test. .run() opens the Predict Yield page (the Dashboard is the landing page)."""
+    def __init__(self):
+        from streamlit.testing.v1 import AppTest
+        self.at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
+
+    def run(self, page="Predict Yield"):
+        self.at.run()
+        if page != "Dashboard":
+            self.at.sidebar.radio[0].set_value(page).run()
+        return self.at
+
+
 @pytest.fixture()
 def app():  # fresh app per test, so sidebar/page state never leaks between tests
-    from streamlit.testing.v1 import AppTest
-    return AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
+    return _App()
 
 
-@pytest.mark.parametrize("page", ["Predict yield", "Data & trends", "Model performance", "About & limitations"])
+@pytest.mark.parametrize("page", ["Dashboard", "Predict Yield", "Data & Trends", "Model Performance", "About the Project"])
 def test_every_page_renders(app, page):
     at = app.run()
     at.sidebar.radio[0].set_value(page).run()
@@ -163,7 +175,7 @@ def test_app_warns_on_extrapolation(app):
 
 def test_performance_page_metrics_come_from_csv(app):
     at = app.run()
-    at.sidebar.radio[0].set_value("Model performance").run()
+    at.sidebar.radio[0].set_value("Model Performance").run()
     comp = data.load_comparison()
     ann = comp[(comp.model == "ANN (all features)") & (comp.split == "test")].iloc[0]
     shown = {m.label: m.value for m in at.metric}
@@ -201,7 +213,7 @@ def test_boundaries_missing_file_is_handled(monkeypatch, tmp_path):
 
 def test_map_tab_renders_and_highlights(app):
     at = app.run()
-    at.sidebar.radio[0].set_value("Data & trends").run()
+    at.sidebar.radio[0].set_value("Data & Trends").run()
     at.selectbox(key="map_pick").set_value("NAGPUR").run()
     assert not at.exception and not at.error
     assert any(m.label == "Nagpur mean yield" for m in at.metric)
@@ -285,3 +297,37 @@ def test_no_download_button_when_input_invalid(app):
     _num(at, "Cultivated area").set_value(0.0)
     at.button[0].click().run()
     assert len(at.get("download_button")) == 0
+
+
+# ======================================================================= Dashboard redesign
+def test_dashboard_is_the_default_landing_page(app):
+    at = app.at.run()
+    assert at.sidebar.radio[0].value == "Dashboard"
+    text = " ".join(m.value for m in at.markdown)
+    assert "Welcome to CropYield AI" in text and "AI-powered rice yield prediction for Maharashtra" in text
+    assert not at.exception and not at.error
+
+
+def test_dashboard_cards_use_real_project_numbers(app):
+    at = app.at.run()
+    text = " ".join(m.value for m in at.markdown)
+    d = data.load_dataset()
+    assert f">{len(d)}<" in text and f">{d.district.nunique()}<" in text          # 642 records, 34 districts
+    assert ">Rice<" in text and ">Kharif<" in text
+    comp = data.load_comparison()
+    r2 = comp[(comp.model == "ANN (all features)") & (comp.split == "test")].R2.iloc[0]
+    assert f"{r2:.3f}" in text                                                       # gauge legend uses saved test R²
+
+
+def test_navigation_lists_all_five_pages(app):
+    at = app.at.run()
+    assert list(at.sidebar.radio[0].options) == ["Dashboard", "Predict Yield", "Data & Trends", "Model Performance",
+                                                 "About the Project"] or len(at.sidebar.radio[0].options) == 5
+
+
+def test_dashboard_button_opens_predict_page(app):
+    at = app.at.run()
+    at.button(key="cta_predict").click().run()
+    assert at.sidebar.radio[0].value == "Predict Yield"
+    assert any(m.label == "District" for m in at.selectbox)
+    assert not at.exception

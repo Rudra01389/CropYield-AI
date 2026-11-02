@@ -4,11 +4,12 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from src import data, interpret, report, ui
+import config as C
+from src import charts, data, interpret, report, ui
 from src.predictor import LABELS, ModelNotAvailable, Predictor, validate_inputs
-from src.ui import AMBER, BLUE, FOREST, GREEN, LEAF, MINT, MODEL_COLORS, SLATE
+from src.ui import AMBER, BLUE, FOREST, GREEN, MINT, MODEL_COLORS, SLATE
 
-st.set_page_config(page_title="CropYield AI", page_icon="🌾", layout="wide")
+st.set_page_config(page_title="CropYield AI", page_icon="🌱", layout="wide", initial_sidebar_state="auto")
 ui.inject_css()
 
 ORDER = ["District-mean baseline", "Linear Regression", "Linear Regression (no weather)",
@@ -63,6 +64,9 @@ except Exception:
     st.stop()
 
 districts = sorted(df.district.unique())
+split_info = meta["split"]
+base_means = meta["district_mean_baseline"]["means"]
+N_INPUT = len(meta["preprocessing"]["encoded_feature_names"])
 
 
 @st.cache_data(show_spinner="Computing feature importance...")
@@ -72,31 +76,114 @@ def get_importance():
     return res.copy(), dict(res.attrs)
 
 
-split_info = meta["split"]
-base_means = meta["district_mean_baseline"]["means"]
-
-
 def crow(model, split):
     return comp[(comp.model == model) & (comp.split == split)].iloc[0]
 
 
 # --------------------------------------------------------------------------- sidebar
-NAV = {"Predict yield": ":material/agriculture: Predict yield", "Data & trends": ":material/insights: Data & trends",
-       "Model performance": ":material/analytics: Model performance",
-       "About & limitations": ":material/info: About & limitations"}
+NAV = {"Dashboard": ":material/dashboard: Dashboard",
+       "Predict Yield": ":material/eco: Predict Yield",
+       "Data & Trends": ":material/insights: Data & Trends",
+       "Model Performance": ":material/model_training: Model Performance",
+       "About the Project": ":material/info: About the Project"}
+
+
+def go_predict():
+    st.session_state["nav"] = "Predict Yield"
+
+
 with st.sidebar:
-    st.markdown('<div class="brand"><div class="logo">🌾</div><div><div class="name">CropYield AI</div>'
-                '<div class="tag">Rice yield · Maharashtra</div></div></div>', unsafe_allow_html=True)
-    st.markdown("<hr>", unsafe_allow_html=True)
-    page = st.radio("Navigate", list(NAV), format_func=NAV.get, label_visibility="collapsed")
-    st.markdown("<hr>", unsafe_allow_html=True)
-    ann_t = crow("ANN (all features)", "test")
-    st.markdown(
-        f'<div class="snap"><div class="lbl">Model</div><b>ANN</b> 39 → 64 → 32 → 1<br>'
-        f'<div class="lbl" style="margin-top:.5rem">Test RMSE (2018-19)</div><b>{ann_t.RMSE:.4f} t/ha</b>'
-        f'<div class="lbl" style="margin-top:.5rem">Data</div>{len(df)} records · {df.district.nunique()} districts · '
-        f'{df.year.min()}-{df.year.max()}</div>', unsafe_allow_html=True)
-    st.caption("Academic prototype. Not for real farming, insurance or policy decisions.")
+    ui.sidebar_brand()
+    page = st.radio("Navigate", list(NAV), format_func=NAV.get, label_visibility="collapsed", key="nav")
+    ui.sidebar_footer([("Project", "Soft Computing mini project"), ("Focus", f"{C.CROP.title()} · {C.SEASON.title()} · Maharashtra"),
+                       ("Data", f"{df.year.min()}–{df.year.max()} · {len(df)} records"),
+                       ("Model", f"ANN {N_INPUT} → 64 → 32 → 1")],
+                      "Academic prototype. Not for real farming, insurance or policy decisions.")
+
+
+# ============================================================================= DASHBOARD
+def page_dashboard():
+    latest = int(df.year.max())
+    ly = df[df.year == latest]
+    ann, base, lin = crow("ANN (all features)", "test"), crow("District-mean baseline", "test"), crow("Linear Regression", "test")
+
+    hl, hr = st.columns([4, 1], vertical_alignment="center")
+    with hl:
+        ui.greeting("Welcome to CropYield AI", "AI-powered rice yield prediction for Maharashtra")
+    with hr:
+        st.button("🌱  Start a prediction", type="primary", on_click=go_predict, width="stretch", key="cta_predict")
+
+    ui.kpi_cards([("📄", "Total historical records", f"{len(df)}", "district-year observations", "green"),
+                  ("🗺️", "Districts", f"{df.district.nunique()}", "across Maharashtra", "blue"),
+                  ("🌾", "Crop", C.CROP.title(), "yield in tonnes per hectare", "amber"),
+                  ("🌧️", "Season", C.SEASON.title(), "June–September weather", "purple")])
+    st.markdown("<div style='height:.9rem'></div>", unsafe_allow_html=True)
+
+    b1, b2, b3 = st.columns(3, gap="medium")
+    with b1:
+        with st.container(key="card_season"):
+            ui.card_title(f"{latest} season", "latest year")
+            st.markdown(ui.pill("Maharashtra · Kharif rice") +
+                        f'<div class="bigv">{ly.yield_t_ha.mean():.2f} t/ha</div>'
+                        f'<div class="bigs">Mean rice yield across {ly.district.nunique()} districts</div>'
+                        + ui.stat_row([("Rainfall", f"{ly.rain_kharif_mm.mean():,.0f} mm"),
+                                       ("Temperature", f"{ly.temp_kharif_c.mean():.1f} °C"),
+                                       ("Humidity", f"{ly.rh_kharif_pct.mean():.0f} %")]), unsafe_allow_html=True)
+    with b2:
+        with st.container(key="card_gauge"):
+            ui.card_title("Model accuracy", "test R², 2018-19")
+            ui.gauge(float(ann.R2), 1.0, f"{ann.R2:.2f}", "ANN test R²",
+                     [("ANN", f"{ann.R2:.3f}", FOREST), ("Linear Regression", f"{lin.R2:.3f}", BLUE),
+                      ("District mean", f"{base.R2:.3f}", AMBER)])
+            st.caption("The ANN did not outperform the simpler models on the test years (see Model Performance).")
+    with b3:
+        with st.container(key="card_info"):
+            ui.card_title("Project information")
+            ui.info_list([("🗓️", "Dataset coverage", f"{df.year.min()}–{df.year.max()} · {len(df)} records · "
+                                                      f"{df.district.nunique()} districts", "green"),
+                          ("🌦️", "Weather parameters", "Rainfall, temperature and humidity (NASA POWER, June–September)", "blue"),
+                          ("🧠", "Prediction model", f"Artificial Neural Network ({N_INPUT} → 64 → 32 → 1)", "purple")])
+
+    st.markdown("<div style='height:.4rem'></div>", unsafe_allow_html=True)
+    c1, c2 = st.columns([3, 2], gap="medium")
+    with c1:
+        with st.container(key="card_dash_trend"):
+            ui.card_title("Historical rice yield trend", "mean across districts")
+            ui.show(charts.yield_trend_smooth(df), 350)
+    with c2:
+        with st.container(key="card_dash_map"):
+            ui.card_title("District yield map", "mean yield 1997-2019")
+            chart, _ = charts.district_map(df, labels=False, legend=False)
+            if chart is None:
+                st.info("District outlines not downloaded yet (run fetch_boundaries.py).")
+            else:
+                ui.show(chart, 350)
+                st.caption("Darker green = higher average yield. Open Data & Trends for details.")
+
+    d1, d2 = st.columns([3, 2], gap="medium")
+    with d1:
+        with st.container(key="card_dash_bars"):
+            ui.card_title("District-wise average rice yield", "t/ha")
+            ui.show(charts.district_bars(df), 340)
+            st.caption("Amber bars: districts with fewer than 15 records (less reliable averages).")
+    with d2:
+        with st.container(key="card_dash_rain"):
+            ui.card_title("Rainfall vs rice yield", "June–September")
+            chart, r = charts.rain_vs_yield(df)
+            ui.show(chart, 340)
+            st.caption(f"Pearson r = {r:+.2f} across all records. Much of this reflects differences between districts, "
+                       "not year-to-year effects.")
+
+    stats = df.groupby("district")["yield_t_ha"].agg(["mean", "min", "max", "count"])
+    t1, t2 = st.columns(2, gap="medium")
+    for col, key, title, sub in [(t1, "card_top", "Highest-yielding districts", stats.sort_values("mean", ascending=False).head(5)),
+                                 (t2, "card_low", "Lowest-yielding districts", stats.sort_values("mean").head(5))]:
+        with col:
+            with st.container(key=key):
+                ui.card_title(title, "mean yield")
+                ui.html_table(["District", "Mean (t/ha)", "Range (t/ha)", "Records"],
+                              [(pretty(d), f"{r['mean']:.2f}", f"{r['min']:.2f}–{r['max']:.2f}", int(r["count"]))
+                               for d, r in sub.iterrows()])
 
 
 # ============================================================================ PREDICT
@@ -142,12 +229,12 @@ def understanding_section(values=None):
     left, right = st.columns([5, 6], gap="large")
     with left:
         with st.container(key="card_roles"):
-            st.markdown("**What each input is**")
+            ui.card_title("What each input is")
             ui.definition_list(roles)
             st.caption("Correlations are over all 642 records and mostly reflect differences between districts.")
     with right:
         with st.container(key="card_importance"):
-            st.markdown("**How much the ANN relies on each input** (permutation importance)")
+            ui.card_title("How much the ANN relies on each input", "permutation importance")
             try:
                 imp, info = get_importance()
             except Exception:
@@ -184,15 +271,16 @@ def understanding_section(values=None):
             mine, typical = round(float(values[c]), k), round(float(sub[c].median()), k)
             diff = round(mine - typical, k)
             rows.append((LABELS[c], f"{mine:,.{k}f}", f"{typical:,.{k}f}", "0" if diff == 0 else f"{diff:+,.{k}f}"))
-        st.markdown("**Your inputs vs this district's typical values**")
-        st.dataframe(pd.DataFrame(rows, columns=["Input", "Your value", f"{pretty(values['district'])} median", "Difference"]),
-                     hide_index=True, width="stretch")
-        st.caption("Large differences mean the estimate is based on unusual conditions for this district.")
+        with st.container(key="card_compare"):
+            ui.card_title("Your inputs vs this district's typical values")
+            st.dataframe(pd.DataFrame(rows, columns=["Input", "Your value", f"{pretty(values['district'])} median", "Difference"]),
+                         hide_index=True, width="stretch")
+            st.caption("Large differences mean the estimate is based on unusual conditions for this district.")
 
 
 def page_predict():
-    ui.page_header("🌱", "Predict Kharif rice yield", "Enter a district and the season's conditions to get an ANN estimate.",
-                   "ANN · 39→64→32→1")
+    ui.page_header("", "Predict Yield", "Enter a district and the season's conditions to get an ANN estimate of Kharif rice yield.",
+                   f"ANN · {N_INPUT}→64→32→1")
     left, right = st.columns([3, 2], gap="large")
 
     with left:
@@ -262,7 +350,7 @@ def page_predict():
                         st.metric(f"{pretty(district)} historical average", f"{base:.2f} t/ha",
                                   delta=f"{shown - base:+.2f} t/ha vs average",
                                   help="Mean yield in the training years 1997-2015.")
-                        st.caption("Statistical estimate from a small academic model. See *Model performance* for its "
+                        st.caption("Statistical estimate from a small academic model. See *Model Performance* for its "
                                    "test accuracy.")
                         last_values = values
                         rep = report.build_report(values, shown, base)
@@ -280,57 +368,23 @@ def page_predict():
     understanding_section(last_values)
 
 
-MAP_COLORS = ["#F1F8F2", "#CFE8D5", "#9FD1AB", "#6BB783", "#3E9A63"]
-
-
+# ============================================================================== TRENDS
 def district_map_tab():
     ui.section("District-wise average rice yield", "Mean reported Kharif rice yield per district, 1997-2019. Hover a district "
                "for its name and value.")
-    gj = data.load_boundaries()
-    if gj is None:
+    pick = st.selectbox("Highlight a district (optional)", ["All districts"] + districts,
+                        format_func=lambda d: d if d == "All districts" else pretty(d), key="map_pick")
+    chart, no_shape = charts.district_map(df, pick)
+    if chart is None:
         ui.callout("warn", "Boundary data not found. ", "Run `python fetch_boundaries.py` to download the district outlines "
                    "(OpenStreetMap). The charts in the other tabs still work.")
         return
-    stats = df.groupby("district")["yield_t_ha"].agg(["mean", "min", "max", "count"])
-    yrs = df.groupby("district")["year"].agg(["min", "max"])
-    feats, drawn = [], set()
-    for f in gj["features"]:
-        d = f["properties"]["district"]
-        has = d in stats.index
-        drawn.add(d)
-        feats.append({"type": "Feature", "geometry": f["geometry"], "properties": {
-            "district": d, "district_name": pretty(d),
-            "mean_yield": round(float(stats.loc[d, "mean"]), 3) if has else None,
-            "records": int(stats.loc[d, "count"]) if has else 0,
-            "years": f"{int(yrs.loc[d, 'min'])}-{int(yrs.loc[d, 'max'])}" if has else "no records"}})
-    no_shape = sorted(set(stats.index) - drawn)
-
-    pick = st.selectbox("Highlight a district (optional)", ["All districts"] + districts,
-                        format_func=lambda d: d if d == "All districts" else pretty(d), key="map_pick")
-    vals = stats["mean"]
-    stops = list(np.linspace(float(vals.min()), float(vals.max()), len(MAP_COLORS)))
-    color = alt.Color("properties.mean_yield:Q", scale=alt.Scale(domain=stops, range=MAP_COLORS),
-                      legend=alt.Legend(title="Mean yield (t/ha)", orient="right", direction="vertical", gradientLength=230,
-                                        format=".1f", titleLimit=200))
-    shapes = alt.Chart(alt.Data(values=feats)).mark_geoshape(stroke="white", strokeWidth=1).encode(
-        color=color, tooltip=[alt.Tooltip("properties.district_name:N", title="District"),
-                              alt.Tooltip("properties.mean_yield:Q", title="Mean yield (t/ha)", format=".2f"),
-                              alt.Tooltip("properties.records:Q", title="Records"),
-                              alt.Tooltip("properties.years:N", title="Years")])
-    layers = [shapes]
-    pts = data.load_district_points()
-    if pts is not None:
-        pts = pts[pts.district.isin(drawn)].assign(label=lambda d: d.district.map(pretty))
-        layers.append(alt.Chart(pts).mark_text(fontSize=8.5, color="#14281D", fontWeight=600).encode(
-            longitude="lon:Q", latitude="lat:Q", text="label:N"))
-    if pick != "All districts":
-        sel = [f for f in feats if f["properties"]["district"] == pick]
-        layers.append(alt.Chart(alt.Data(values=sel)).mark_geoshape(fill=None, stroke=FOREST, strokeWidth=3.5))
     with st.container(key="card_map"):
-        ui.show(alt.layer(*layers).project(type="mercator"), 560)
+        ui.show(chart, 560)
         st.caption("Darker green = higher average yield. Outlines: current OpenStreetMap district boundaries (ODbL), simplified.")
-
     if pick != "All districts":
+        stats = df.groupby("district")["yield_t_ha"].agg(["mean", "min", "max", "count"])
+        yrs = df.groupby("district")["year"].agg(["min", "max"])
         r, y = stats.loc[pick], yrs.loc[pick]
         m1, m2, m3, m4 = st.columns(4)
         m1.metric(f"{pretty(pick)} mean yield", f"{r['mean']:.2f} t/ha")
@@ -346,39 +400,45 @@ def district_map_tab():
     st.caption(" ".join(notes))
 
 
-# ============================================================================== TRENDS
 def page_trends():
-    ui.page_header("📈", "Data & trends", "Explore the 642 Kharif rice records used to train and test the model.",
+    ui.page_header("", "Data & Trends", "Explore the Kharif rice records, weather and district patterns behind the model.",
                    f"{df.year.min()}–{df.year.max()}")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Records", f"{len(df)}")
-    c2.metric("Districts", f"{df.district.nunique()}")
-    c3.metric("Years", f"{df.year.min()}-{df.year.max()}")
-    c4.metric("Mean yield", f"{df.yield_t_ha.mean():.2f} t/ha")
+    ui.kpi_cards([("📄", "Records", f"{len(df)}", "district-year observations", "green"),
+                  ("🗺️", "Districts", f"{df.district.nunique()}", "Maharashtra", "blue"),
+                  ("📅", "Years", f"{df.year.min()}-{df.year.max()}", f"{df.year.nunique()} Kharif seasons", "purple"),
+                  ("🌾", "Mean yield", f"{df.yield_t_ha.mean():.2f} t/ha", "all records", "amber")])
+    st.markdown("<div style='height:.6rem'></div>", unsafe_allow_html=True)
 
-    t1, t2, tm, t3, t4 = st.tabs(["Yield trends", "District comparison", "Yield map", "Weather vs yield",
-                                  "Weather over time"])
+    to, t1, t2, tm, tw = st.tabs(["Dataset overview", "Yield trends", "District comparison", "Yield map", "Weather"])
+
+    with to:
+        o1, o2 = st.columns([3, 2], gap="medium")
+        with o1:
+            with st.container(key="card_summary"):
+                ui.card_title("Variables in the final dataset", "642 rows")
+                spec = [("Rice yield", "yield_t_ha", "t/ha", 2), ("Cultivated area", "area_ha", "ha", 0),
+                        ("Rainfall Jun-Sep", "rain_kharif_mm", "mm", 0), ("Mean temperature", "temp_kharif_c", "°C", 1),
+                        ("Mean humidity", "rh_kharif_pct", "%", 1)]
+                ui.html_table(["Variable", "Unit", "Mean", "Min", "Max"],
+                              [(n, u, f"{df[c].mean():,.{k}f}", f"{df[c].min():,.{k}f}", f"{df[c].max():,.{k}f}")
+                               for n, c, u, k in spec])
+                st.caption("Yield is reported production ÷ area. Weather comes from NASA POWER (MERRA-2) at one point per "
+                           "district; four district pairs share a grid cell.")
+        with o2:
+            with st.container(key="card_coverage"):
+                ui.card_title("Records per year")
+                ui.show(charts.records_per_year(df), 250)
+        with st.container(key="card_rec_district"):
+            ui.card_title("Records per district", "years with data")
+            ui.show(charts.records_per_district(df), 620)
+            st.caption("Some districts have short histories (Akola 2, Palghar 6, Buldhana 7) because of missing rows or "
+                       "district reorganisation.")
 
     with t1:
         ui.section("Yield over time", "Yearly mean across districts, with the middle 50% of districts shaded.")
         pick = st.multiselect("Overlay districts (optional, up to 5)", districts, format_func=pretty, max_selections=5)
-        g = df.groupby("year")["yield_t_ha"]
-        yearly = pd.DataFrame({"year": g.mean().index, "mean": g.mean().values, "q25": g.quantile(.25).values,
-                               "q75": g.quantile(.75).values})
-        x = alt.X("year:Q", title="Agricultural year", axis=alt.Axis(format="d", tickMinStep=1),
-                  scale=alt.Scale(zero=False, nice=False, padding=8))
-        band = alt.Chart(yearly).mark_area(color=MINT, opacity=.65).encode(x=x, y="q25:Q", y2="q75:Q")
-        lines = pd.concat([yearly[["year", "mean"]].rename(columns={"mean": "yield_t_ha"}).assign(series="All districts (mean)"),
-                           df[df.district.isin(pick)][["year", "yield_t_ha", "district"]]
-                           .assign(series=lambda d: d.district.map(pretty)).drop(columns="district")])
-        palette = [FOREST, AMBER, BLUE, "#8E4B9E", "#C0504D", "#00897B"]
-        names = ["All districts (mean)"] + [pretty(p) for p in pick]
-        ln = alt.Chart(lines).mark_line(point=True, strokeWidth=2.5).encode(
-            x=x, y=alt.Y("yield_t_ha:Q", title="Yield (t/ha)"),
-            color=alt.Color("series:N", title="", scale=alt.Scale(domain=names, range=palette[:len(names)])),
-            tooltip=["series", alt.Tooltip("year:Q", format="d"), alt.Tooltip("yield_t_ha:Q", format=".2f", title="Yield")])
         with st.container(key="card_trend"):
-            ui.show(band + ln, 360)
+            ui.show(charts.yield_trend(df, pick), 360)
             st.caption("Averages include districts with very small rice areas, where reported yield is coarsely rounded.")
 
     with t2:
@@ -403,7 +463,7 @@ def page_trends():
     with tm:
         district_map_tab()
 
-    with t3:
+    with tw:
         ui.section("Weather vs yield", "Each dot is one district-year; the line is a straight-line fit.")
         within = st.checkbox("Compare years within each district (remove district averages)", value=False,
                              help="Subtracts each district's own mean, so only year-to-year differences remain.")
@@ -414,8 +474,7 @@ def page_trends():
                 d[c] = d[c] - d.groupby("district")[c].transform("mean")
         info = {"rain_kharif_mm": "Rainfall Jun-Sep (mm)", "temp_kharif_c": "Mean temperature (°C)",
                 "rh_kharif_pct": "Mean humidity (%)"}
-        ccols = st.columns(3)
-        for col, c in zip(ccols, cols):
+        for col, c in zip(st.columns(3, gap="medium"), cols):
             r = d[c].corr(d["yield_t_ha"])
             xlab = info[c] + (" - change vs district avg" if within else "")
             ylab = "Yield (t/ha)" + (" - change vs district avg" if within else "")
@@ -426,7 +485,7 @@ def page_trends():
             fit = pts.transform_regression(c, "yield_t_ha").mark_line(color=AMBER, strokeWidth=3)
             with col:
                 with st.container(key=f"card_sc_{c}"):
-                    st.markdown(f"**{info[c]}**  \nPearson r = **{r:+.2f}**")
+                    ui.card_title(info[c], f"r = {r:+.2f}")
                     ui.show(pts + fit, 260)
         if within:
             ui.callout("info", "Within-district view. ", "After removing district averages the relationships are much "
@@ -435,21 +494,20 @@ def page_trends():
             ui.callout("warn", "Be careful reading these correlations. ", "Wet, humid districts (e.g. in the Konkan) also "
                        "have higher yields for other reasons. Tick the box above to see year-to-year effects within districts.")
 
-    with t4:
         ui.section("Weather over time", "Average across districts (NASA POWER, June-September).")
         yr = df.groupby("year")[["rain_kharif_mm", "temp_kharif_c", "rh_kharif_pct"]].mean().reset_index()
         xw = alt.X("year:Q", title="Agricultural year", axis=alt.Axis(format="d", tickMinStep=1),
                    scale=alt.Scale(zero=False, nice=False, padding=8))
-        w1, w2 = st.columns(2)
+        w1, w2 = st.columns(2, gap="medium")
         with w1:
             with st.container(key="card_w_rain"):
-                st.markdown("**Rainfall, Jun-Sep (mm)**")
+                ui.card_title("Rainfall, Jun-Sep (mm)", "mean of districts")
                 ui.show(alt.Chart(yr).mark_bar(color=BLUE, opacity=.85).encode(
                     x=xw, y=alt.Y("rain_kharif_mm:Q", title="Mean rainfall (mm)"),
                     tooltip=[alt.Tooltip("year:Q", format="d"), alt.Tooltip("rain_kharif_mm:Q", format=".0f")]), 280)
         with w2:
             with st.container(key="card_w_temp"):
-                st.markdown("**Temperature (°C) and humidity (%)**")
+                ui.card_title("Temperature (°C) and humidity (%)", "mean of districts")
                 tl = yr.melt("year", ["temp_kharif_c", "rh_kharif_pct"], "var", "value")
                 tl["var"] = tl["var"].map({"temp_kharif_c": "Temperature (°C)", "rh_kharif_pct": "Humidity (%)"})
                 base_ch = alt.Chart(tl).encode(x=xw, color=alt.Color("var:N", title="", scale=alt.Scale(
@@ -473,14 +531,63 @@ def best_style(t):
     return t.style.apply(lambda _: css, axis=None).format({"MAE": "{:.4f}", "MSE": "{:.4f}", "RMSE": "{:.4f}", "R²": "{:.4f}"})
 
 
+def performance_overview(ann, base, lin):
+    sp = split_info
+    p1 = N_INPUT * 64 + 64
+    p2 = 64 * 32 + 32
+    p3 = 32 + 1
+    o1, o2 = st.columns(2, gap="medium")
+    with o1:
+        with st.container(key="card_arch"):
+            ui.card_title("ANN architecture", f"{p1 + p2 + p3:,} parameters")
+            ui.html_table(["Layer", "Units", "Activation", "Parameters"],
+                          [("Input (5 numeric + district one-hot)", N_INPUT, "–", "–"), ("Dense 1", 64, "ReLU", f"{p1:,}"),
+                           ("Dense 2", 32, "ReLU", f"{p2:,}"), ("Output", 1, "Linear", f"{p3}")])
+            st.caption(f"{meta['ann']['architecture']}. Saved model = best of 5 seeds by validation loss (seed "
+                       f"{meta['ann']['selected_seed']}, best epoch {meta['ann']['best_epoch']} of {meta['ann']['epochs_run']}).")
+    with o2:
+        with st.container(key="card_split"):
+            ui.card_title("Chronological train / validation / test split")
+            ui.html_table(["Set", "Years", "Rows", "Used for"],
+                          [("Training", sp["train"], sp["n_train"], "fit weights, scaler, encoder"),
+                           ("Validation", sp["val"], sp["n_val"], "early stopping, seed choice"),
+                           ("Test", sp["test"], sp["n_test"], "final metrics only")])
+            st.caption("No random splitting: later years are never used to predict earlier ones. Scaler and encoder are fitted "
+                       "on training rows only.")
+    with st.container(key="card_metrics"):
+        ui.card_title("RMSE, MAE and R² for the three main models")
+        rows = []
+        for name in ["ANN (all features)", "Linear Regression", "District-mean baseline"]:
+            t, v = crow(name, "test"), crow(name, "val")
+            rows.append((name, f"{t.MAE:.4f}", f"{t.RMSE:.4f}", f"{t.R2:.4f}", f"{v.MAE:.4f}", f"{v.RMSE:.4f}", f"{v.R2:.4f}"))
+        ui.html_table(["Model", "Test MAE", "Test RMSE", "Test R²", "Val MAE", "Val RMSE", "Val R²"], rows)
+        st.caption("Errors are in tonnes/hectare (lower is better); R² higher is better.")
+
+    full, noweather = crow("ANN (all features)", "test"), crow("ANN (no weather)", "test")
+    diff = full.RMSE_mean - noweather.RMSE_mean
+    with st.container(key="card_observations"):
+        ui.card_title("Evaluation observations")
+        ui.bullets([
+            f"On the test years the ANN's RMSE ({ann.RMSE:.4f}) is {'higher' if ann.RMSE > base.RMSE else 'lower'} than the "
+            f"district-mean baseline ({base.RMSE:.4f}) and {'higher' if ann.RMSE > lin.RMSE else 'lower'} than Linear "
+            f"Regression ({lin.RMSE:.4f}) t/ha, so the ANN {'did not outperform' if ann.RMSE >= min(base.RMSE, lin.RMSE) else 'outperformed'} "
+            "the simpler models.",
+            f"On the validation years the ANN was the best model ({crow('ANN (all features)', 'val').RMSE:.4f} vs "
+            f"{crow('District-mean baseline', 'val').RMSE:.4f} baseline), but that advantage did not carry over to the test years.",
+            f"Averaged over 5 seeds, the ANN's test RMSE is {full.RMSE_mean:.4f} ± {full.RMSE_std:.4f}; the saved model is one "
+            "seed picked on validation data.",
+            f"Weather inputs did not help: seed-averaged test RMSE is {full.RMSE_mean:.4f} with weather vs "
+            f"{noweather.RMSE_mean:.4f} without ({'worse' if diff > 0 else 'better'} by {abs(diff):.3f} t/ha).",
+            f"The test set has only {sp['n_test']} rows (2 years), so small differences between models are within noise.",
+        ])
+
+
 def page_performance():
     ann, base, lin = crow("ANN (all features)", "test"), crow("District-mean baseline", "test"), crow("Linear Regression", "test")
     under = ann.RMSE >= min(base.RMSE, lin.RMSE)
-    ui.page_header("📊", "Model performance", "How the ANN compares with two simple reference models on unseen years.",
+    ui.page_header("", "Model Performance", "How the ANN compares with two simple reference models on unseen years.",
                    "ANN below baselines on test" if under else "ANN best on test")
     sp = split_info
-    st.caption(f"Chronological split · train {sp['train']} ({sp['n_train']} rows) · validation {sp['val']} ({sp['n_val']}) · "
-               f"test {sp['test']} ({sp['n_test']}). The saved ANN is the best of 5 random seeds by validation loss.")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("ANN test RMSE", f"{ann.RMSE:.4f} t/ha")
@@ -502,7 +609,10 @@ def page_performance():
         ui.callout("good", "The ANN had the lowest test error. ", f"ANN {ann.RMSE:.4f} vs baseline {base.RMSE:.4f} and Linear "
                    f"Regression {lin.RMSE:.4f} t/ha.")
 
-    t1, t2, t3, t4 = st.tabs(["Comparison", "Actual vs predicted", "Training curves", "Seed variability"])
+    to, t1, t2, t3, t4 = st.tabs(["Overview", "Comparison", "Actual vs predicted", "Training curves", "Seed variability"])
+
+    with to:
+        performance_overview(ann, base, lin)
 
     with t1:
         ui.section("All models", "Green cells mark the best value in each column within a split.")
@@ -514,7 +624,7 @@ def page_performance():
         tab.columns = ["Model", "Split", "MAE", "MSE", "RMSE", "R²"]
         st.dataframe(best_style(tab), hide_index=True, width="stretch")
 
-        ch1, ch2 = st.columns(2)
+        ch1, ch2 = st.columns(2, gap="medium")
         long = comp.assign(split=comp.split.map({"val": "Validation", "test": "Test"}))
         for col, metric, title in [(ch1, "RMSE", "RMSE (t/ha, lower is better)"), (ch2, "R2", "R² (higher is better)")]:
             base_c = alt.Chart(long).encode(
@@ -544,7 +654,7 @@ def page_performance():
         ui.chips([f"{model}", f"RMSE {sel_row.RMSE:.4f} t/ha", f"R² {sel_row.R2:.4f}", f"{len(p)} rows"])
         hi = float(max(p.actual_yield_t_ha.max(), p.pred.max())) * 1.05
         color = MODEL_COLORS[model]
-        a1, a2 = st.columns(2)
+        a1, a2 = st.columns(2, gap="medium")
         pts = alt.Chart(p).mark_circle(size=70, opacity=.75, color=color).encode(
             x=alt.X("actual_yield_t_ha:Q", title="Actual yield (t/ha)", scale=alt.Scale(domain=[0, hi])),
             y=alt.Y("pred:Q", title="Predicted yield (t/ha)", scale=alt.Scale(domain=[0, hi])),
@@ -553,7 +663,7 @@ def page_performance():
         diag = alt.Chart(pd.DataFrame({"x": [0, hi], "y": [0, hi]})).mark_line(color=SLATE, strokeDash=[5, 4]).encode(x="x:Q", y="y:Q")
         with a1:
             with st.container(key="card_avp"):
-                st.markdown("**Actual vs predicted**")
+                ui.card_title("Actual vs predicted")
                 ui.show(pts + diag, 340)
         res = alt.Chart(p).mark_circle(size=70, opacity=.75, color=color).encode(
             x=alt.X("pred:Q", title="Predicted yield (t/ha)"), y=alt.Y("resid:Q", title="Residual = actual − predicted (t/ha)"),
@@ -561,7 +671,7 @@ def page_performance():
         zero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color=SLATE, strokeDash=[5, 4]).encode(y="y:Q")
         with a2:
             with st.container(key="card_resid"):
-                st.markdown("**Residuals**")
+                ui.card_title("Residuals")
                 ui.show(res + zero, 340)
 
     with t3:
@@ -579,10 +689,10 @@ def page_performance():
         seeds = get_seeds()
         ui.section("Does the ANN result depend on luck?", "Test RMSE for each of the 5 random seeds, against the reference models.")
         s = seeds[(seeds.split == "test") & seeds.model.isin(["ANN (all features)", "ANN (no weather)"])].copy()
-        refs = pd.DataFrame({"model": ["District-mean baseline", "Linear Regression"],
-                             "RMSE": [base.RMSE, lin.RMSE]})
+        refs = pd.DataFrame({"model": ["District-mean baseline", "Linear Regression"], "RMSE": [base.RMSE, lin.RMSE]})
         dots = alt.Chart(s).mark_circle(size=140, opacity=.9).encode(
-            x=alt.X("seed:O", title="Random seed", axis=alt.Axis(labelAngle=0)), y=alt.Y("RMSE:Q", title="Test RMSE (t/ha)", scale=alt.Scale(zero=False)),
+            x=alt.X("seed:O", title="Random seed", axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("RMSE:Q", title="Test RMSE (t/ha)", scale=alt.Scale(zero=False)),
             color=alt.Color("model:N", title="", scale=alt.Scale(domain=list(MODEL_COLORS), range=list(MODEL_COLORS.values()))),
             xOffset="model:N", tooltip=["model", "seed", alt.Tooltip("RMSE:Q", format=".3f")])
         rules = alt.Chart(refs).mark_rule(strokeDash=[6, 4], strokeWidth=2.5).encode(
@@ -602,11 +712,12 @@ def page_performance():
 
 # ================================================================================ ABOUT
 def page_about():
-    ui.page_header("🌾", "About CropYield AI", "Project overview, data, model, technology and limitations.", "Academic prototype")
-    t1, t2, t3, t4, t5 = st.tabs(["Overview", "Data", "Model & workflow", "Technology", "Limitations"])
+    ui.page_header("", "About the Project", "Overview, problem statement, data, technology, architecture and limitations.",
+                   "Academic prototype")
+    t1, t2, t3, t4, t5 = st.tabs(["Overview", "Dataset", "Technology", "Architecture & workflow", "Limitations & future scope"])
 
     with t1:
-        ui.section("What this project does")
+        ui.section("Project overview")
         st.write("CropYield AI estimates **Kharif rice yield (tonnes/hectare)** for districts of Maharashtra from the "
                  "agricultural year, cultivated area and June–September rainfall, temperature and humidity, using an "
                  "Artificial Neural Network. It is a Soft Computing mini project.")
@@ -614,6 +725,10 @@ def page_about():
                        ("🧪 Method", "Chronological split, leakage-free preprocessing, district-mean baseline, Linear "
                                      "Regression and ANN with early stopping."),
                        ("📌 Outcome", "Working pipeline and dashboard. The ANN did not beat the baselines on the test years.")], 3)
+        ui.section("Problem statement")
+        st.write("Design and develop an artificial neural network to predict the yield of a specific crop (Kharif rice) based on "
+                 "weather conditions for selected geospatial areas (districts of Maharashtra) under cultivation, and compare it "
+                 "fairly against simpler models.")
         ui.section("Objectives")
         ui.steps(["Build a clean district-year dataset of Kharif rice yield for Maharashtra.",
                   "Add June–September weather for every district from a public source.",
@@ -628,8 +743,8 @@ def page_about():
                                         "642 usable records after cleaning."),
                        ("🛰️ Weather", "NASA POWER daily MERRA-2 reanalysis: precipitation, 2 m temperature and relative "
                                       "humidity, aggregated to June–September per district-year."),
-                       ("📍 Locations", "One representative point per district: the centre of the district boundary "
-                                        "from OpenStreetMap Nominatim.")], 3)
+                       ("📍 Locations and outlines", "District centre points and boundary outlines from OpenStreetMap "
+                                                      "(Nominatim, ODbL).")], 3)
         ui.section("Model inputs", "Observed range in the dataset.")
         tbl = pd.DataFrame({"Input": ["District", LABELS["year"], LABELS["area_ha"], LABELS["rain_kharif_mm"],
                                       LABELS["temp_kharif_c"], LABELS["rh_kharif_pct"]],
@@ -642,36 +757,36 @@ def page_about():
         st.caption("Target: rice yield in t/ha. Production is deliberately not an input: it would leak the answer.")
 
     with t3:
-        ui.section("ANN architecture")
-        ui.chips([meta["ann"]["architecture"].split(";")[0], "Adam · MSE · batch 32", "4,673 parameters"])
-        img = data.diagram_image("03_ann_architecture.png")
-        if img:
-            st.image(img, width="stretch")
-        ui.section("Workflow")
-        img = data.diagram_image("02_workflow.png")
-        if img:
-            st.image(img, width="stretch")
-        st.caption(f"Preprocessing: numeric inputs standardised, district one-hot encoded, both fitted on training years only. "
-                   f"Best epoch {meta['ann']['best_epoch']} of {meta['ann']['epochs_run']} run (early stopping).")
-        with st.expander("System architecture diagram"):
-            img = data.diagram_image("01_system_architecture.png")
-            if img:
-                st.image(img, width="stretch")
-
-    with t4:
         ui.section("Technology stack")
         v = meta["versions"]
         ui.mini_cards([("🐍 Python", "pandas · NumPy for data handling"), ("🧠 TensorFlow / Keras", f"ANN model (v{v['tensorflow']})"),
                        ("📐 scikit-learn", f"Scaling, encoding, Linear Regression, metrics (v{v['sklearn']})"),
-                       ("🛰️ NASA POWER · OSM", "Weather API and district coordinates (via requests)"),
+                       ("🛰️ NASA POWER · OSM", "Weather API, district coordinates and outlines (via requests)"),
                        ("📊 Altair · Matplotlib", "Dashboard charts and report figures"),
                        ("🖥️ Streamlit", "This web application")], 3)
+
+    with t4:
+        ui.section("System architecture")
+        img = data.diagram_image("01_system_architecture.png")
+        if img:
+            st.image(img, width="stretch")
+        ui.section("ANN workflow")
+        img = data.diagram_image("02_workflow.png")
+        if img:
+            st.image(img, width="stretch")
+        ui.section("ANN architecture")
+        ui.chips([meta["ann"]["architecture"].split(";")[0], "Adam · MSE · batch 32", f"{N_INPUT * 64 + 64 + 64 * 32 + 32 + 33:,} parameters"])
+        img = data.diagram_image("03_ann_architecture.png")
+        if img:
+            st.image(img, width="stretch")
+        st.caption(f"Preprocessing: numeric inputs standardised, district one-hot encoded, both fitted on training years only. "
+                   f"Best epoch {meta['ann']['best_epoch']} of {meta['ann']['epochs_run']} run (early stopping).")
 
     with t5:
         ui.section("Limitations")
         ui.mini_cards([
             ("⚠️ Small dataset", "Only 642 observations; test results rest on two years (51 rows)."),
-            ("⚠️ Model quality", "The ANN did not beat simple baselines on the test set (see Model performance)."),
+            ("⚠️ Model quality", "The ANN did not beat simple baselines on the test set (see Model Performance)."),
             ("🛰️ Shared weather", "Four district pairs share one NASA grid cell: Hingoli/Parbhani, Akola/Amravati, "
                                   "Nagpur/Wardha, Bhandara/Gondia."),
             ("📍 One point per district", "Each district's weather is a single geographic point, not a district average."),
@@ -679,11 +794,19 @@ def page_about():
             ("🕒 Not a forecast", "Inputs cover June–September and are known only after the season."),
             ("🌱 Missing drivers", "No soil, irrigation or fertiliser information is used."),
             ("📉 Extrapolation", "Years or weather outside the training range give less reliable estimates.")], 2)
+        ui.section("Future scope")
+        ui.mini_cards([
+            ("🌧️ Better weather", "District-averaged or gauge-based rainfall (e.g. IMD) and several points per district."),
+            ("🌱 More drivers", "Soil, irrigation, fertiliser and sowing-date information; satellite vegetation indices."),
+            ("🕒 Early forecasts", "Growth-stage features and October weather for true in-season prediction."),
+            ("🔬 Modelling", "Regularised models, tree ensembles, rolling-origin validation and soft-computing tuning "
+                             "such as genetic algorithms."),
+            ("🗺️ Wider coverage", "Other crops and states, with prediction intervals.")], 2)
         st.markdown("&nbsp;", unsafe_allow_html=True)
         ui.callout("info", "Disclaimer. ", "Academic prototype for a Soft Computing mini project. Do not use it for farming, "
                    "insurance, pricing or policy decisions.")
 
 
-{"Predict yield": page_predict, "Data & trends": page_trends, "Model performance": page_performance,
- "About & limitations": page_about}[page]()
+{"Dashboard": page_dashboard, "Predict Yield": page_predict, "Data & Trends": page_trends,
+ "Model Performance": page_performance, "About the Project": page_about}[page]()
 ui.footer()
