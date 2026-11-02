@@ -176,3 +176,41 @@ div[data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) { background:
   .greet h1, .phead h1 { font-size:1.4rem; } .phead { flex-wrap:wrap; }
   .kpi .kval { font-size:1.5rem; } .bigv { font-size:2rem; }
 }
+
+
+/* ============================ login screen ============================ */
+.lgn-art { position:relative; height:660px; border-radius:24px; overflow:hidden; box-shadow: 0 10px 30px rgba(20,40,29,.12); }
+.lgn-art svg { position:absolute; inset:0; width:100%; height:100%; }
+.lgn-top { position:absolute; top:26px; left:28px; display:flex; align-items:center; gap:.7rem; }
+.lgn-logo { width:46px; height:46px; border-radius:13px; background:#fff; display:flex; align-items:center; justify-content:center; font-size:1.5rem;
+            box-shadow:0 4px 12px rgba(20,40,29,.12); }
+.lgn-name { font-weight:700; font-size:1.4rem; letter-spacing:-.02em; color: var(--forest-dark); line-height:1.1; } .lgn-name span { color: var(--green-deep); }
+.lgn-tag { font-size:.8rem; color: var(--forest); }
+.lgn-head { position:absolute; top:110px; left:28px; max-width:55%; font-size:1.55rem; font-weight:600; line-height:1.3; color: var(--forest-dark); letter-spacing:-.01em; }
+.lgn-pills { position:absolute; left:24px; right:24px; bottom:22px; display:flex; flex-wrap:wrap; gap:.5rem; }
+.lgn-pills span { background:rgba(255,255,255,.92); color: var(--forest-dark); font-size:.8rem; font-weight:600; padding:.4rem .8rem; border-radius:999px; }
+div[class*="st-key-card_login"] { padding:2rem 2.1rem; }
+.lgn-mark { width:52px; height:52px; border-radius:14px; background: var(--mint); display:flex; align-items:center; justify-content:center; font-size:1.7rem; }
+.lgn-title { margin:.6rem 0 0 0; font-size:1.9rem; font-weight:700; letter-spacing:-.02em; color: var(--ink); padding:0; }
+.lgn-sub { margin:.2rem 0 .8rem 0; color: var(--slate); font-size:.95rem; }
+.demo-note { margin-top:.9rem; padding:.65rem .85rem; background: var(--amber-bg); border:1px solid #F0D58C; border-radius:10px; color:#5E4200; font-size:.8rem; line-height:1.45; }
+
+/* ============================ farmer profile ============================ */
+.sprof { display:flex; align-items:center; gap:.7rem; padding:.7rem .8rem; background: var(--page); border:1px solid var(--line); border-radius:12px; margin-bottom:.9rem; }
+.sprof .av, .pav { width:40px; height:40px; border-radius:50%; background: var(--forest); color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.sprof .pn { font-weight:600; font-size:.9rem; color: var(--ink); line-height:1.2; } .sprof .pl { font-size:.76rem; color: var(--slate); }
+.pcard { position:relative; display:flex; align-items:center; gap:1.2rem; background: var(--card); border:1px solid var(--line); border-radius:16px; padding:1.1rem 1.3rem; box-shadow: var(--shadow); }
+.pcard .pav { width:58px; height:58px; font-size:1.3rem; }
+.pgrid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:1rem 1.4rem; flex:1 1 auto; }
+.pcl { font-size:.7rem; color: var(--slate); text-transform:uppercase; letter-spacing:.06em; } .pcv { font-size:1.02rem; font-weight:600; color: var(--ink); }
+.pdemo { position:absolute; top:.7rem; right:.9rem; font-size:.68rem; font-weight:600; background: var(--amber-bg); color: var(--amber); border:1px solid #F0D58C; padding:.12rem .55rem; border-radius:999px; }
+@media (max-width: 900px) { .lgn-art { height:380px; } .lgn-head { top:90px; max-width:80%; font-size:1.15rem; } .pgrid { grid-template-columns: repeat(2, minmax(0,1fr)); } .pcard { flex-wrap:wrap; } }
+
+/* one-click demo login */
+.lgn-who { display:flex; align-items:center; gap:.8rem; background: var(--page); border:1px solid var(--line); border-radius:14px; padding:.8rem 1rem; margin:.2rem 0 1.1rem 0; }
+.lgn-who .av { width:44px; height:44px; border-radius:50%; background: var(--forest); color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.lgn-who .wn { font-weight:600; color: var(--ink); } .lgn-who .wn span { font-size:.68rem; font-weight:600; margin-left:.4rem; background: var(--amber-bg); color: var(--amber); border:1px solid #F0D58C; padding:.1rem .5rem; border-radius:999px; vertical-align:middle; }
+.lgn-who .wd { font-size:.82rem; color: var(--slate); }
+div[class*="st-key-card_login"] .stButton button { min-height:3.4rem; font-size:1.1rem; border-radius:12px; box-shadow: 0 6px 16px rgba(30,142,75,.32); }
+div[class*="st-key-card_login"] .stButton button:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(30,142,75,.38); }
+div[class*="st-key-card_login"] .stButton button:focus-visible { outline:3px solid #A5D6A7; outline-offset:2px; }

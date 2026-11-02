@@ -1,5 +1,6 @@
 """Reusable UI pieces: CSS injection, headers, cards, gauge, tables, sidebar parts, chart styling."""
 import math
+import random
 from html import escape
 from pathlib import Path
 
@@ -174,3 +175,91 @@ def style_chart(chart: alt.Chart, height: int = 320):
 
 def show(chart, height: int = 320):
     st.altair_chart(style_chart(chart, height), width="stretch", theme=None)
+
+
+# ------------------------------------------------------------------------- login / profile
+def initials(name: str) -> str:
+    parts = [w for w in name.split() if w]
+    return "".join(w[0].upper() for w in parts[:2]) or "?"
+
+
+def login_art():
+    """Original agricultural illustration (sky, sun, hills, rice field with converging furrows) drawn as inline SVG."""
+    rnd = random.Random(7)
+    hz = 310
+    svg = ['<svg viewBox="0 0 600 680" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">',
+           '<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#CDEBD8"/>'
+           '<stop offset="1" stop-color="#F7FBF2"/></linearGradient>'
+           '<linearGradient id="fld" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A5D6A7"/>'
+           '<stop offset=".45" stop-color="#4FA36F"/><stop offset="1" stop-color="#1F7A48"/></linearGradient>'
+           '<radialGradient id="sun"><stop offset="0" stop-color="#FFE9A8" stop-opacity=".95"/>'
+           '<stop offset="1" stop-color="#FFE9A8" stop-opacity="0"/></radialGradient></defs>',
+           f'<rect width="600" height="{hz + 20}" fill="url(#sky)"/>',
+           '<circle cx="480" cy="130" r="125" fill="url(#sun)"/><circle cx="480" cy="130" r="38" fill="#F6C945"/>',
+           '<g fill="#fff" opacity=".85"><ellipse cx="130" cy="120" rx="52" ry="14"/><ellipse cx="160" cy="108" rx="34" ry="12"/>'
+           '<ellipse cx="340" cy="170" rx="46" ry="12"/><ellipse cx="365" cy="160" rx="28" ry="10"/></g>',
+           f'<path d="M0 {hz} Q90 {hz-60} 190 {hz-25} T380 {hz-30} T600 {hz-45} L600 {hz+30} L0 {hz+30}Z" fill="#BFDFC9"/>',
+           f'<path d="M0 {hz+8} Q120 {hz-38} 250 {hz-8} T600 {hz-15} L600 {hz+40} L0 {hz+40}Z" fill="#9CCFA8"/>',
+           f'<path d="M0 {hz+20} L600 {hz+20} L600 680 L0 680Z" fill="url(#fld)"/>']
+    # soil bands that widen towards the viewer, then furrows converging on the horizon
+    y, step = hz + 20, 8.0
+    band = 0
+    while y < 680:
+        if band % 2 == 0:
+            svg.append(f'<rect x="0" y="{y:.1f}" width="600" height="{step:.1f}" fill="#124428" opacity=".10"/>')
+        y += step
+        step *= 1.22
+        band += 1
+    for x in range(-1000, 1600, 70):
+        svg.append(f'<line x1="300" y1="{hz + 20}" x2="{x}" y2="680" stroke="#124428" stroke-opacity=".22" stroke-width="1.6"/>')
+    for _ in range(300):                                   # little rice plants, larger when closer
+        yy = rnd.uniform(hz + 30, 675)
+        t = (yy - hz) / (680 - hz)
+        h = 3 + t * 18
+        xx = rnd.uniform(0, 600)
+        svg.append(f'<path d="M{xx:.1f} {yy:.1f} q{-h*.25:.1f} {-h*.6:.1f} {-h*.45:.1f} {-h:.1f} M{xx:.1f} {yy:.1f} '
+                   f'q{h*.05:.1f} {-h*.7:.1f} {h*.05:.1f} {-h*1.1:.1f} M{xx:.1f} {yy:.1f} q{h*.25:.1f} {-h*.6:.1f} {h*.45:.1f} {-h:.1f}" '
+                   f'stroke="#E9F7EC" stroke-opacity=".65" stroke-width="{0.8 + t * 1.4:.1f}" fill="none" stroke-linecap="round"/>')
+    svg.append("</svg>")
+    st.markdown(
+        '<div class="lgn-art">' + "".join(svg) +
+        '<div class="lgn-top"><div class="lgn-logo">🌱</div><div><div class="lgn-name"><span>Crop</span>Yield AI</div>'
+        '<div class="lgn-tag">Smart Agricultural Analytics</div></div></div>'
+        '<div class="lgn-head">AI-powered rice yield prediction for Maharashtra</div>'
+        '<div class="lgn-pills"><span>🗺️ District yield map</span><span>🧠 ANN yield estimates</span>'
+        '<span>🛰️ NASA POWER weather</span></div></div>', unsafe_allow_html=True)
+
+
+def login_heading(subtitle: str):
+    st.markdown(f'<div class="lgn-mark">🌱</div><h1 class="lgn-title">Welcome, Farmer!</h1>'
+                f'<p class="lgn-sub">{escape(subtitle)}</p>', unsafe_allow_html=True)
+
+
+def demo_farmer_preview(profile: dict):
+    """Shows whose sample account the button opens (read from auth_config, nothing typed by the visitor)."""
+    st.markdown(f'<div class="lgn-who"><div class="av">{escape(initials(profile["name"]))}</div><div>'
+                f'<div class="wn">{escape(profile["name"])} <span>Demo farmer</span></div>'
+                f'<div class="wd">{escape(profile["district"])}, {escape(profile["state"])} · {escape(profile["crop"])} '
+                f'({escape(profile["season"])}) · {profile["land_area_ha"]:g} ha</div></div></div>', unsafe_allow_html=True)
+
+
+def demo_note():
+    st.markdown('<div class="demo-note">🧪 <b>Demonstration login.</b> This one-click sample account is for an academic project '
+                'and is <b>not secure production authentication</b>: anyone who opens the app can enter. '
+                'It uses no real credentials or personal data.</div>', unsafe_allow_html=True)
+
+
+def sidebar_profile(profile: dict):
+    st.markdown(f'<div class="sprof"><div class="av">{escape(initials(profile["name"]))}</div><div>'
+                f'<div class="pn">{escape(profile["name"])}</div>'
+                f'<div class="pl">{escape(profile["district"])}, {escape(profile["state"])}</div></div></div>',
+                unsafe_allow_html=True)
+
+
+def profile_card(profile: dict):
+    """Farmer profile: name, district and state, crop and season, cultivated land area."""
+    items = [("Farmer name", profile["name"]), ("District & state", f'{profile["district"]}, {profile["state"]}'),
+             ("Crop & season", f'{profile["crop"]} · {profile["season"]}'), ("Cultivated land", f'{profile["land_area_ha"]:g} hectares')]
+    cells = "".join(f'<div class="pcell"><div class="pcl">{escape(k)}</div><div class="pcv">{escape(v)}</div></div>' for k, v in items)
+    st.markdown(f'<div class="pcard"><div class="pav">{escape(initials(profile["name"]))}</div><div class="pgrid">{cells}</div>'
+                f'<span class="pdemo">Demo account</span></div>', unsafe_allow_html=True)

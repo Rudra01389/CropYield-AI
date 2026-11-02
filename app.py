@@ -5,12 +5,18 @@ import pandas as pd
 import streamlit as st
 
 import config as C
-from src import charts, data, interpret, report, ui
+from src import auth, charts, data, interpret, login, report, ui
 from src.predictor import LABELS, ModelNotAvailable, Predictor, validate_inputs
 from src.ui import AMBER, BLUE, FOREST, GREEN, MINT, MODEL_COLORS, SLATE
 
 st.set_page_config(page_title="CropYield AI", page_icon="🌱", layout="wide", initial_sidebar_state="auto")
 ui.inject_css()
+
+# --- demo authentication gate: nothing below (data, model, pages) runs for an unauthenticated visitor ---
+if not auth.is_authenticated():
+    login.render()
+    st.stop()
+profile = auth.current_user()
 
 ORDER = ["District-mean baseline", "Linear Regression", "Linear Regression (no weather)",
          "ANN (all features)", "ANN (no weather)"]
@@ -84,8 +90,7 @@ def crow(model, split):
 NAV = {"Dashboard": ":material/dashboard: Dashboard",
        "Predict Yield": ":material/eco: Predict Yield",
        "Data & Trends": ":material/insights: Data & Trends",
-       "Model Performance": ":material/model_training: Model Performance",
-       "About the Project": ":material/info: About the Project"}
+       "Model Performance": ":material/model_training: Model Performance"}
 
 
 def go_predict():
@@ -94,25 +99,30 @@ def go_predict():
 
 with st.sidebar:
     ui.sidebar_brand()
+    ui.sidebar_profile(profile)
     page = st.radio("Navigate", list(NAV), format_func=NAV.get, label_visibility="collapsed", key="nav")
     ui.sidebar_footer([("Project", "Soft Computing mini project"), ("Focus", f"{C.CROP.title()} · {C.SEASON.title()} · Maharashtra"),
                        ("Data", f"{df.year.min()}–{df.year.max()} · {len(df)} records"),
                        ("Model", f"ANN {N_INPUT} → 64 → 32 → 1")],
                       "Academic prototype. Not for real farming, insurance or policy decisions.")
+    st.button("Logout", icon=":material/logout:", key="logout_btn", on_click=auth.logout, width="stretch",
+              help="Sign out and return to the login screen.")
 
 
 # ============================================================================= DASHBOARD
-def page_dashboard():
+def page_dashboard(profile):
     latest = int(df.year.max())
     ly = df[df.year == latest]
     ann, base, lin = crow("ANN (all features)", "test"), crow("District-mean baseline", "test"), crow("Linear Regression", "test")
 
     hl, hr = st.columns([4, 1], vertical_alignment="center")
     with hl:
-        ui.greeting("Welcome to CropYield AI", "AI-powered rice yield prediction for Maharashtra")
+        ui.greeting(f"Welcome, {profile['name']}!", "Welcome to CropYield AI · AI-powered rice yield prediction for Maharashtra")
     with hr:
         st.button("🌱  Start a prediction", type="primary", on_click=go_predict, width="stretch", key="cta_predict")
 
+    ui.profile_card(profile)
+    st.markdown("<div style='height:.9rem'></div>", unsafe_allow_html=True)
     ui.kpi_cards([("📄", "Total historical records", f"{len(df)}", "district-year observations", "green"),
                   ("🗺️", "Districts", f"{df.district.nunique()}", "across Maharashtra", "blue"),
                   ("🌾", "Crop", C.CROP.title(), "yield in tonnes per hectare", "amber"),
@@ -278,7 +288,7 @@ def understanding_section(values=None):
             st.caption("Large differences mean the estimate is based on unusual conditions for this district.")
 
 
-def page_predict():
+def page_predict(profile):
     ui.page_header("", "Predict Yield", "Enter a district and the season's conditions to get an ANN estimate of Kharif rice yield.",
                    f"ANN · {N_INPUT}→64→32→1")
     left, right = st.columns([3, 2], gap="large")
@@ -286,18 +296,32 @@ def page_predict():
     with left:
         with st.container(key="card_inputs"):
             ui.section("1 · Location", "Defaults below are this district's historical medians.")
-            district = st.selectbox("District", districts, format_func=pretty,
-                                    help="Maharashtra districts with Kharif rice records (1997-2019).")
+            farm_district = profile["district"].upper()
+            district = st.selectbox("District", districts, index=districts.index(farm_district) if farm_district in districts else 0,
+                                    format_func=pretty, help="Maharashtra districts with Kharif rice records (1997-2019). "
+                                    "Prefilled with your registered district.")
             sub = df[df.district == district]
+            land = float(profile["land_area_ha"])
             ui.chips([f"{len(sub)} records", f"{int(sub.year.min())}-{int(sub.year.max())}",
                       f"typical area {sub.area_ha.median():,.0f} ha"], muted=True)
+            in_scope = profile["crop"].lower() == C.CROP and profile["season"].lower() == C.SEASON
+            ui.chips([f"👤 {profile['name']}", f"🌾 {profile['crop']} · {profile['season']}", f"📐 your land {land:g} ha"])
+            if not in_scope:
+                st.warning(f"The model only covers {C.CROP.title()} in the {C.SEASON.title()} season.")
+            use_land = st.checkbox(f"Use my land area ({land:g} ha) as the model's area input", value=False, key="use_land",
+                                   help="Off by default: the ANN was trained on district-level rice areas "
+                                        f"({df.area_ha.min():,.0f}–{df.area_ha.max():,.0f} ha), so a single farm is outside its range.")
+            if use_land:
+                st.caption("The model's area input expects district-level hectares; a single farm is far smaller than anything it "
+                           "was trained on, so expect an extrapolation warning and a less reliable yield estimate.")
             ui.section("2 · Season conditions", "Rainfall, temperature and humidity are June–September values.")
             with st.form("predict_form", border=False):
                 r1a, r1b = st.columns(2)
                 year = r1a.number_input(LABELS["year"], 1997, 2035, int(df.year.max()), 1, key=f"year_{district}",
                                         help="2019 means crop year 2019-20 (Kharif sown June-July 2019).")
-                area = r1b.number_input(LABELS["area_ha"], 0.0, 1_000_000.0, float(sub.area_ha.median()), 100.0,
-                                        key=f"area_{district}", help="Area under Kharif rice, in hectares.")
+                area = r1b.number_input(LABELS["area_ha"], 0.0, 1_000_000.0, land if use_land else float(sub.area_ha.median()),
+                                        0.5 if use_land else 100.0, key=f"area_{district}_{int(use_land)}",
+                                        help="Area under Kharif rice, in hectares.")
                 r2a, r2b = st.columns(2)
                 rain = r2a.number_input(LABELS["rain_kharif_mm"], 0.0, 6000.0,
                                         float(round(sub.rain_kharif_mm.median(), 1)), 10.0, key=f"rain_{district}",
@@ -347,6 +371,9 @@ def page_predict():
                         st.metric("Predicted rice yield", f"{shown:.2f} t/ha")
                         st.metric("Estimated production (estimate)", f"{shown * area:,.0f} t",
                                   help="Predicted yield × entered area. A rough estimate only.")
+                        if not use_land:
+                            st.metric(f"Your {land:g} ha: est. production", f"{shown * land:,.2f} t",
+                                      help="Predicted district-level yield × your registered land area. A rough estimate only.")
                         st.metric(f"{pretty(district)} historical average", f"{base:.2f} t/ha",
                                   delta=f"{shown - base:+.2f} t/ha vs average",
                                   help="Mean yield in the training years 1997-2015.")
@@ -710,103 +737,6 @@ def page_performance():
         st.dataframe(agg, hide_index=True, width="stretch")
 
 
-# ================================================================================ ABOUT
-def page_about():
-    ui.page_header("", "About the Project", "Overview, problem statement, data, technology, architecture and limitations.",
-                   "Academic prototype")
-    t1, t2, t3, t4, t5 = st.tabs(["Overview", "Dataset", "Technology", "Architecture & workflow", "Limitations & future scope"])
-
-    with t1:
-        ui.section("Project overview")
-        st.write("CropYield AI estimates **Kharif rice yield (tonnes/hectare)** for districts of Maharashtra from the "
-                 "agricultural year, cultivated area and June–September rainfall, temperature and humidity, using an "
-                 "Artificial Neural Network. It is a Soft Computing mini project.")
-        ui.mini_cards([("🎯 Objective", "Predict district rice yield and test whether an ANN beats simple baselines."),
-                       ("🧪 Method", "Chronological split, leakage-free preprocessing, district-mean baseline, Linear "
-                                     "Regression and ANN with early stopping."),
-                       ("📌 Outcome", "Working pipeline and dashboard. The ANN did not beat the baselines on the test years.")], 3)
-        ui.section("Problem statement")
-        st.write("Design and develop an artificial neural network to predict the yield of a specific crop (Kharif rice) based on "
-                 "weather conditions for selected geospatial areas (districts of Maharashtra) under cultivation, and compare it "
-                 "fairly against simpler models.")
-        ui.section("Objectives")
-        ui.steps(["Build a clean district-year dataset of Kharif rice yield for Maharashtra.",
-                  "Add June–September weather for every district from a public source.",
-                  "Train an ANN and evaluate it on unseen future years.",
-                  "Compare against a district-mean baseline and Linear Regression; test whether weather helps.",
-                  "Provide a simple web interface for prediction and exploration."])
-
-    with t2:
-        ui.section("Datasets and sources")
-        ui.mini_cards([("🌾 Crop data", "District-level Kharif rice area, production and yield for Maharashtra, 1997-98 to "
-                                        "2019-20 (India Agriculture Crop Production dataset supplied by the team). "
-                                        "642 usable records after cleaning."),
-                       ("🛰️ Weather", "NASA POWER daily MERRA-2 reanalysis: precipitation, 2 m temperature and relative "
-                                      "humidity, aggregated to June–September per district-year."),
-                       ("📍 Locations and outlines", "District centre points and boundary outlines from OpenStreetMap "
-                                                      "(Nominatim, ODbL).")], 3)
-        ui.section("Model inputs", "Observed range in the dataset.")
-        tbl = pd.DataFrame({"Input": ["District", LABELS["year"], LABELS["area_ha"], LABELS["rain_kharif_mm"],
-                                      LABELS["temp_kharif_c"], LABELS["rh_kharif_pct"]],
-                            "Observed range": ["34 districts", f"{df.year.min()}-{df.year.max()}",
-                                               f"{df.area_ha.min():,.0f} - {df.area_ha.max():,.0f}",
-                                               f"{df.rain_kharif_mm.min():,.0f} - {df.rain_kharif_mm.max():,.0f}",
-                                               f"{df.temp_kharif_c.min():.1f} - {df.temp_kharif_c.max():.1f}",
-                                               f"{df.rh_kharif_pct.min():.1f} - {df.rh_kharif_pct.max():.1f}"]})
-        st.dataframe(tbl, hide_index=True, width="stretch")
-        st.caption("Target: rice yield in t/ha. Production is deliberately not an input: it would leak the answer.")
-
-    with t3:
-        ui.section("Technology stack")
-        v = meta["versions"]
-        ui.mini_cards([("🐍 Python", "pandas · NumPy for data handling"), ("🧠 TensorFlow / Keras", f"ANN model (v{v['tensorflow']})"),
-                       ("📐 scikit-learn", f"Scaling, encoding, Linear Regression, metrics (v{v['sklearn']})"),
-                       ("🛰️ NASA POWER · OSM", "Weather API, district coordinates and outlines (via requests)"),
-                       ("📊 Altair · Matplotlib", "Dashboard charts and report figures"),
-                       ("🖥️ Streamlit", "This web application")], 3)
-
-    with t4:
-        ui.section("System architecture")
-        img = data.diagram_image("01_system_architecture.png")
-        if img:
-            st.image(img, width="stretch")
-        ui.section("ANN workflow")
-        img = data.diagram_image("02_workflow.png")
-        if img:
-            st.image(img, width="stretch")
-        ui.section("ANN architecture")
-        ui.chips([meta["ann"]["architecture"].split(";")[0], "Adam · MSE · batch 32", f"{N_INPUT * 64 + 64 + 64 * 32 + 32 + 33:,} parameters"])
-        img = data.diagram_image("03_ann_architecture.png")
-        if img:
-            st.image(img, width="stretch")
-        st.caption(f"Preprocessing: numeric inputs standardised, district one-hot encoded, both fitted on training years only. "
-                   f"Best epoch {meta['ann']['best_epoch']} of {meta['ann']['epochs_run']} run (early stopping).")
-
-    with t5:
-        ui.section("Limitations")
-        ui.mini_cards([
-            ("⚠️ Small dataset", "Only 642 observations; test results rest on two years (51 rows)."),
-            ("⚠️ Model quality", "The ANN did not beat simple baselines on the test set (see Model Performance)."),
-            ("🛰️ Shared weather", "Four district pairs share one NASA grid cell: Hingoli/Parbhani, Akola/Amravati, "
-                                  "Nagpur/Wardha, Bhandara/Gondia."),
-            ("📍 One point per district", "Each district's weather is a single geographic point, not a district average."),
-            ("🔗 Not causal", "Correlations in historical data do not establish causation."),
-            ("🕒 Not a forecast", "Inputs cover June–September and are known only after the season."),
-            ("🌱 Missing drivers", "No soil, irrigation or fertiliser information is used."),
-            ("📉 Extrapolation", "Years or weather outside the training range give less reliable estimates.")], 2)
-        ui.section("Future scope")
-        ui.mini_cards([
-            ("🌧️ Better weather", "District-averaged or gauge-based rainfall (e.g. IMD) and several points per district."),
-            ("🌱 More drivers", "Soil, irrigation, fertiliser and sowing-date information; satellite vegetation indices."),
-            ("🕒 Early forecasts", "Growth-stage features and October weather for true in-season prediction."),
-            ("🔬 Modelling", "Regularised models, tree ensembles, rolling-origin validation and soft-computing tuning "
-                             "such as genetic algorithms."),
-            ("🗺️ Wider coverage", "Other crops and states, with prediction intervals.")], 2)
-        st.markdown("&nbsp;", unsafe_allow_html=True)
-        ui.callout("info", "Disclaimer. ", "Academic prototype for a Soft Computing mini project. Do not use it for farming, "
-                   "insurance, pricing or policy decisions.")
-
-
-{"Dashboard": page_dashboard, "Predict Yield": page_predict, "Data & Trends": page_trends,
- "Model Performance": page_performance, "About the Project": page_about}[page]()
+{"Dashboard": lambda: page_dashboard(profile), "Predict Yield": lambda: page_predict(profile), "Data & Trends": page_trends,
+ "Model Performance": page_performance}[page]()
 ui.footer()

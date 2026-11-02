@@ -118,13 +118,15 @@ def test_missing_model_gives_friendly_error(monkeypatch, tmp_path):
 
 # ---------------------------------------------------------------- Streamlit
 class _App:
-    """Fresh AppTest per test. .run() opens the Predict Yield page (the Dashboard is the landing page)."""
+    """Fresh AppTest per test. The app starts at the login screen, so .run() clicks "Continue as Demo Farmer" first,
+    then opens the requested page (default: Predict Yield; the Dashboard is the landing page after login)."""
     def __init__(self):
         from streamlit.testing.v1 import AppTest
         self.at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=180)
 
     def run(self, page="Predict Yield"):
         self.at.run()
+        self.at.button(key="demo_login").click().run()
         if page != "Dashboard":
             self.at.sidebar.radio[0].set_value(page).run()
         return self.at
@@ -135,7 +137,7 @@ def app():  # fresh app per test, so sidebar/page state never leaks between test
     return _App()
 
 
-@pytest.mark.parametrize("page", ["Dashboard", "Predict Yield", "Data & Trends", "Model Performance", "About the Project"])
+@pytest.mark.parametrize("page", ["Dashboard", "Predict Yield", "Data & Trends", "Model Performance"])
 def test_every_page_renders(app, page):
     at = app.run()
     at.sidebar.radio[0].set_value(page).run()
@@ -301,15 +303,15 @@ def test_no_download_button_when_input_invalid(app):
 
 # ======================================================================= Dashboard redesign
 def test_dashboard_is_the_default_landing_page(app):
-    at = app.at.run()
+    at = app.run("Dashboard")
     assert at.sidebar.radio[0].value == "Dashboard"
     text = " ".join(m.value for m in at.markdown)
-    assert "Welcome to CropYield AI" in text and "AI-powered rice yield prediction for Maharashtra" in text
+    assert "Welcome, Ramesh Patil!" in text and "AI-powered rice yield prediction for Maharashtra" in text
     assert not at.exception and not at.error
 
 
 def test_dashboard_cards_use_real_project_numbers(app):
-    at = app.at.run()
+    at = app.run("Dashboard")
     text = " ".join(m.value for m in at.markdown)
     d = data.load_dataset()
     assert f">{len(d)}<" in text and f">{d.district.nunique()}<" in text          # 642 records, 34 districts
@@ -319,14 +321,16 @@ def test_dashboard_cards_use_real_project_numbers(app):
     assert f"{r2:.3f}" in text                                                       # gauge legend uses saved test R²
 
 
-def test_navigation_lists_all_five_pages(app):
-    at = app.at.run()
-    assert list(at.sidebar.radio[0].options) == ["Dashboard", "Predict Yield", "Data & Trends", "Model Performance",
-                                                 "About the Project"] or len(at.sidebar.radio[0].options) == 5
+def test_navigation_lists_exactly_the_four_pages(app):
+    at = app.run("Dashboard")
+    import re
+    labels = [re.sub(r"^:material/\w+:\s*", "", o) for o in at.sidebar.radio[0].options]   # strip the icon prefix
+    assert labels == ["Dashboard", "Predict Yield", "Data & Trends", "Model Performance"]
+    assert "About the Project" not in " ".join(m.value for m in at.markdown)
 
 
 def test_dashboard_button_opens_predict_page(app):
-    at = app.at.run()
+    at = app.run("Dashboard")
     at.button(key="cta_predict").click().run()
     assert at.sidebar.radio[0].value == "Predict Yield"
     assert any(m.label == "District" for m in at.selectbox)
