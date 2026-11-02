@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from src import data, ui
+from src import data, interpret, report, ui
 from src.predictor import LABELS, ModelNotAvailable, Predictor, validate_inputs
 from src.ui import AMBER, BLUE, FOREST, GREEN, LEAF, MINT, MODEL_COLORS, SLATE
 
@@ -63,6 +63,15 @@ except Exception:
     st.stop()
 
 districts = sorted(df.district.unique())
+
+
+@st.cache_data(show_spinner="Computing feature importance...")
+def get_importance():
+    """Permutation importance of the saved ANN on the held-out test years (cached for the whole session)."""
+    res = interpret.permutation_importance(get_predictor(), interpret.evaluation_rows(df, meta))
+    return res.copy(), dict(res.attrs)
+
+
 split_info = meta["split"]
 base_means = meta["district_mean_baseline"]["means"]
 
@@ -113,6 +122,74 @@ def history_chart(district, year=None, estimate=None):
     return alt.layer(*layers)
 
 
+def understanding_section(values=None):
+    ui.section("Understanding the Prediction",
+               "What each input represents, and how much the saved ANN's accuracy depends on it.")
+    num = ["year", "area_ha", "rain_kharif_mm", "temp_kharif_c", "rh_kharif_pct"]
+    corr = df[num].corrwith(df.yield_t_ha)
+    dm = df.groupby("district").yield_t_ha.mean()
+    roles = [
+        ("District", f"One of {len(districts)} districts. District average yields in the data range from {dm.min():.2f} "
+                     f"to {dm.max():.2f} t/ha, so this input carries a lot of information."),
+        ("Agricultural year", f"Start year of the Kharif season (correlation with yield {corr.year:+.2f}). Years after "
+                              f"{df.year.max()} are outside the data."),
+        ("Cultivated area", f"Hectares under Kharif rice (correlation {corr.area_ha:+.2f}). Very small areas have "
+                            "coarsely rounded yields."),
+        ("Rainfall", f"Total June–September rainfall at one NASA POWER grid point (correlation {corr.rain_kharif_mm:+.2f})."),
+        ("Temperature", f"Mean June–September temperature (correlation {corr.temp_kharif_c:+.2f})."),
+        ("Humidity", f"Mean June–September relative humidity (correlation {corr.rh_kharif_pct:+.2f})."),
+    ]
+    left, right = st.columns([5, 6], gap="large")
+    with left:
+        with st.container(key="card_roles"):
+            st.markdown("**What each input is**")
+            ui.definition_list(roles)
+            st.caption("Correlations are over all 642 records and mostly reflect differences between districts.")
+    with right:
+        with st.container(key="card_importance"):
+            st.markdown("**How much the ANN relies on each input** (permutation importance)")
+            try:
+                imp, info = get_importance()
+            except Exception:
+                st.info("Feature importance is not available because the saved model could not be loaded.")
+                imp = None
+            if imp is not None:
+                order = imp.label.tolist()
+                bars = alt.Chart(imp).mark_bar(color=GREEN, cornerRadiusEnd=4).encode(
+                    y=alt.Y("label:N", sort=order, title=""),
+                    x=alt.X("importance:Q", title="Increase in test RMSE when the input is shuffled (t/ha)"),
+                    tooltip=[alt.Tooltip("label:N", title="Input"),
+                             alt.Tooltip("importance:Q", title="RMSE increase (t/ha)", format="+.3f"),
+                             alt.Tooltip("std:Q", title="Std over shuffles", format=".3f")])
+                err = alt.Chart(imp.assign(lo=imp.importance - imp["std"], hi=imp.importance + imp["std"])).mark_rule(
+                    color="#14281D", strokeWidth=1.5).encode(y=alt.Y("label:N", sort=order), x="lo:Q", x2="hi:Q")
+                zero = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(color=SLATE).encode(x="x:Q")
+                ui.show(bars + err + zero, 270)
+                st.caption(f"Computed with the saved ANN on the {info['n_rows']} held-out test rows (2018-19); baseline test "
+                           f"RMSE {info['baseline_rmse']:.4f} t/ha; {info['n_repeats']} random shuffles per input; "
+                           "whiskers show ± 1 standard deviation over shuffles.")
+    ui.callout("warn", "Importance is not causation. ",
+               "A bar shows how much the ANN's predictions on these test rows get worse when an input is scrambled, so it "
+               "indicates predictive contribution only; it does not show that the input causes yield changes, and it does not "
+               "explain the network's internal reasoning. Inputs are correlated (humidity and rainfall differ mostly between "
+               "districts), so they share credit: a short bar for District does not mean districts do not matter. Bars near "
+               "or below zero mean shuffling that input did not hurt accuracy on these 51 rows. The test set is small, so "
+               "the ranking is approximate.")
+    if values:
+        sub = df[df.district == values["district"]]
+        decimals = {"year": 0, "area_ha": 0, "rain_kharif_mm": 1, "temp_kharif_c": 2, "rh_kharif_pct": 2}
+        rows = []
+        for c in num:
+            k = decimals[c]
+            mine, typical = round(float(values[c]), k), round(float(sub[c].median()), k)
+            diff = round(mine - typical, k)
+            rows.append((LABELS[c], f"{mine:,.{k}f}", f"{typical:,.{k}f}", "0" if diff == 0 else f"{diff:+,.{k}f}"))
+        st.markdown("**Your inputs vs this district's typical values**")
+        st.dataframe(pd.DataFrame(rows, columns=["Input", "Your value", f"{pretty(values['district'])} median", "Difference"]),
+                     hide_index=True, width="stretch")
+        st.caption("Large differences mean the estimate is based on unusual conditions for this district.")
+
+
 def page_predict():
     ui.page_header("🌱", "Predict Kharif rice yield", "Enter a district and the season's conditions to get an ANN estimate.",
                    "ANN · 39→64→32→1")
@@ -146,6 +223,7 @@ def page_predict():
                 submitted = st.form_submit_button("🌱  Predict Yield", type="primary", width="stretch")
 
     estimate_pt = None
+    last_values = None
     with right:
         with st.container(key="card_result"):
             ui.section("3 · Estimate")
@@ -186,6 +264,12 @@ def page_predict():
                                   help="Mean yield in the training years 1997-2015.")
                         st.caption("Statistical estimate from a small academic model. See *Model performance* for its "
                                    "test accuracy.")
+                        last_values = values
+                        rep = report.build_report(values, shown, base)
+                        st.download_button("⬇  Download Prediction Report (CSV)", data=report.to_csv_bytes(rep),
+                                           file_name=report.file_name(values), mime="text/csv", key="dl_report",
+                                           on_click="ignore", width="stretch",
+                                           help="One-row CSV with your inputs, the ANN estimate and the district average.")
 
     ui.section(f"Historical yield · {pretty(district)}",
                "Reported Kharif rice yield by year, with the district's training-period average.")
@@ -193,6 +277,73 @@ def page_predict():
         ui.show(history_chart(district, *(estimate_pt or (None, None))) if estimate_pt else history_chart(district), 300)
         st.caption("Green line: reported yield · dashed amber line: district average 1997-2015"
                    + (" · diamond: your ANN estimate." if estimate_pt else "."))
+    understanding_section(last_values)
+
+
+MAP_COLORS = ["#F1F8F2", "#CFE8D5", "#9FD1AB", "#6BB783", "#3E9A63"]
+
+
+def district_map_tab():
+    ui.section("District-wise average rice yield", "Mean reported Kharif rice yield per district, 1997-2019. Hover a district "
+               "for its name and value.")
+    gj = data.load_boundaries()
+    if gj is None:
+        ui.callout("warn", "Boundary data not found. ", "Run `python fetch_boundaries.py` to download the district outlines "
+                   "(OpenStreetMap). The charts in the other tabs still work.")
+        return
+    stats = df.groupby("district")["yield_t_ha"].agg(["mean", "min", "max", "count"])
+    yrs = df.groupby("district")["year"].agg(["min", "max"])
+    feats, drawn = [], set()
+    for f in gj["features"]:
+        d = f["properties"]["district"]
+        has = d in stats.index
+        drawn.add(d)
+        feats.append({"type": "Feature", "geometry": f["geometry"], "properties": {
+            "district": d, "district_name": pretty(d),
+            "mean_yield": round(float(stats.loc[d, "mean"]), 3) if has else None,
+            "records": int(stats.loc[d, "count"]) if has else 0,
+            "years": f"{int(yrs.loc[d, 'min'])}-{int(yrs.loc[d, 'max'])}" if has else "no records"}})
+    no_shape = sorted(set(stats.index) - drawn)
+
+    pick = st.selectbox("Highlight a district (optional)", ["All districts"] + districts,
+                        format_func=lambda d: d if d == "All districts" else pretty(d), key="map_pick")
+    vals = stats["mean"]
+    stops = list(np.linspace(float(vals.min()), float(vals.max()), len(MAP_COLORS)))
+    color = alt.Color("properties.mean_yield:Q", scale=alt.Scale(domain=stops, range=MAP_COLORS),
+                      legend=alt.Legend(title="Mean yield (t/ha)", orient="right", direction="vertical", gradientLength=230,
+                                        format=".1f", titleLimit=200))
+    shapes = alt.Chart(alt.Data(values=feats)).mark_geoshape(stroke="white", strokeWidth=1).encode(
+        color=color, tooltip=[alt.Tooltip("properties.district_name:N", title="District"),
+                              alt.Tooltip("properties.mean_yield:Q", title="Mean yield (t/ha)", format=".2f"),
+                              alt.Tooltip("properties.records:Q", title="Records"),
+                              alt.Tooltip("properties.years:N", title="Years")])
+    layers = [shapes]
+    pts = data.load_district_points()
+    if pts is not None:
+        pts = pts[pts.district.isin(drawn)].assign(label=lambda d: d.district.map(pretty))
+        layers.append(alt.Chart(pts).mark_text(fontSize=8.5, color="#14281D", fontWeight=600).encode(
+            longitude="lon:Q", latitude="lat:Q", text="label:N"))
+    if pick != "All districts":
+        sel = [f for f in feats if f["properties"]["district"] == pick]
+        layers.append(alt.Chart(alt.Data(values=sel)).mark_geoshape(fill=None, stroke=FOREST, strokeWidth=3.5))
+    with st.container(key="card_map"):
+        ui.show(alt.layer(*layers).project(type="mercator"), 560)
+        st.caption("Darker green = higher average yield. Outlines: current OpenStreetMap district boundaries (ODbL), simplified.")
+
+    if pick != "All districts":
+        r, y = stats.loc[pick], yrs.loc[pick]
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric(f"{pretty(pick)} mean yield", f"{r['mean']:.2f} t/ha")
+        m2.metric("Range (t/ha)", f"{r['min']:.2f}–{r['max']:.2f}")
+        m3.metric("Records", f"{int(r['count'])}")
+        m4.metric("Years", f"{int(y['min'])}-{int(y['max'])}")
+    notes = ["Districts are coloured by their historical mean, so districts with few records (e.g. Akola has 2) are less reliable.",
+             "Outlines show today's district boundaries; older records of districts later split (e.g. Thane before 2014, "
+             "Bhandara before 1999) refer to their former, larger areas.",
+             "Mumbai City and Mumbai Suburban have no rice records and are not shown."]
+    if no_shape:
+        notes.append("No boundary available for: " + ", ".join(pretty(d) for d in no_shape) + " (listed in other tabs only).")
+    st.caption(" ".join(notes))
 
 
 # ============================================================================== TRENDS
@@ -205,7 +356,8 @@ def page_trends():
     c3.metric("Years", f"{df.year.min()}-{df.year.max()}")
     c4.metric("Mean yield", f"{df.yield_t_ha.mean():.2f} t/ha")
 
-    t1, t2, t3, t4 = st.tabs(["Yield trends", "District comparison", "Weather vs yield", "Weather over time"])
+    t1, t2, tm, t3, t4 = st.tabs(["Yield trends", "District comparison", "Yield map", "Weather vs yield",
+                                  "Weather over time"])
 
     with t1:
         ui.section("Yield over time", "Yearly mean across districts, with the middle 50% of districts shaded.")
@@ -247,6 +399,9 @@ def page_trends():
         with st.container(key="card_districts"):
             ui.show(rng + dot, 760)
             st.caption("Amber = districts with fewer than 15 records (e.g. Akola has only 2), so their averages are less reliable.")
+
+    with tm:
+        district_map_tab()
 
     with t3:
         ui.section("Weather vs yield", "Each dot is one district-year; the line is a straight-line fit.")

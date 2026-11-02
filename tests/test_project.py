@@ -169,3 +169,119 @@ def test_performance_page_metrics_come_from_csv(app):
     shown = {m.label: m.value for m in at.metric}
     assert shown["ANN test RMSE"] == f"{ann.RMSE:.4f} t/ha"
     assert shown["ANN test R²"] == f"{ann.R2:.4f}"
+
+
+# ======================================================================= Phase 6 features
+# ---- 1. district map ----
+def test_boundaries_cover_every_district(df):
+    gj = data.load_boundaries()
+    assert gj is not None and len(gj["features"]) == 34
+    assert set(f["properties"]["district"] for f in gj["features"]) == set(df.district)
+
+
+def test_boundary_vertices_unchanged_only_reordered():
+    """The loader may only reverse ring order for the map renderer; no coordinate may change."""
+    import json
+    raw = json.loads((ROOT / "data" / "raw" / "maharashtra_district_boundaries.geojson").read_text())
+    ready = data.load_boundaries()
+
+    def pts(g):
+        polys = g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]
+        return sorted(tuple(p[:2]) for poly in polys for ring in poly for p in ring)
+    for a, b in zip(raw["features"], ready["features"]):
+        assert pts(a["geometry"]) == pts(b["geometry"])
+        polys = b["geometry"]["coordinates"] if b["geometry"]["type"] == "MultiPolygon" else [b["geometry"]["coordinates"]]
+        assert all(data._signed_area([tuple(p[:2]) for p in poly[0]]) < 0 for poly in polys)   # exteriors clockwise
+
+
+def test_boundaries_missing_file_is_handled(monkeypatch, tmp_path):
+    monkeypatch.setattr(data, "ROOT", tmp_path)
+    assert data.load_boundaries() is None and data.load_district_points() is None
+
+
+def test_map_tab_renders_and_highlights(app):
+    at = app.run()
+    at.sidebar.radio[0].set_value("Data & trends").run()
+    at.selectbox(key="map_pick").set_value("NAGPUR").run()
+    assert not at.exception and not at.error
+    assert any(m.label == "Nagpur mean yield" for m in at.metric)
+    expected = df_mean("NAGPUR")
+    assert next(m.value for m in at.metric if m.label == "Nagpur mean yield") == f"{expected:.2f} t/ha"
+
+
+def df_mean(district):
+    d = data.load_dataset()
+    return d[d.district == district].yield_t_ha.mean()
+
+
+# ---- 2. permutation importance ----
+@pytest.fixture(scope="module")
+def importance(df, predictor):
+    from src import interpret
+    return interpret.permutation_importance(predictor, interpret.evaluation_rows(df, data.load_metadata()))
+
+
+def test_importance_structure_and_baseline(importance):
+    assert set(importance.feature) == {"district", "year", "area_ha", "rain_kharif_mm", "temp_kharif_c", "rh_kharif_pct"}
+    assert np.isfinite(importance[["importance", "std"]].to_numpy()).all()
+    assert importance.attrs["n_rows"] == 51
+    comp = data.load_comparison()
+    saved = comp[(comp.model == "ANN (all features)") & (comp.split == "test")].RMSE.iloc[0]
+    assert abs(importance.attrs["baseline_rmse"] - saved) < 1e-3     # uses the saved ANN on the saved test years
+
+
+def test_importance_is_reproducible_and_uses_test_years_only(df, predictor, importance):
+    from src import interpret
+    rows = interpret.evaluation_rows(df, data.load_metadata())
+    assert rows.year.min() == 2018 and rows.year.max() == 2019
+    again = interpret.permutation_importance(predictor, rows)
+    assert np.allclose(again.importance, importance.importance)
+
+
+def test_predict_page_shows_understanding_section(app):
+    at = app.run()
+    assert any("Understanding the Prediction" in m.value for m in at.markdown)
+    assert any("not causation" in m.value.lower() for m in at.markdown)
+
+
+# ---- 3. downloadable report ----
+def test_report_columns_values_and_units():
+    from src import report
+    vals = dict(district="PUNE", year=2019, area_ha=1000.0, rain_kharif_mm=1200.5, temp_kharif_c=25.5, rh_kharif_pct=80.0)
+    r = report.build_report(vals, 2.0, 1.3)
+    assert list(r.columns) == report.COLUMNS and len(r) == 1
+    row = r.iloc[0]
+    assert row["District"] == "Pune" and row["Agricultural year"] == 2019
+    assert row["Predicted rice yield (tonnes/hectare)"] == 2.0 and row["Estimated production (tonnes)"] == 2000.0
+    assert all(("(" in c) or c in ("District", "Agricultural year") for c in r.columns)    # units present
+    text = report.to_csv_bytes(r).decode("utf-8-sig")
+    assert "°C" in text and text.splitlines()[1].startswith("Pune,2019")
+    assert report.file_name(vals) == "cropyield_prediction_pune_2019.csv"
+
+
+@pytest.mark.parametrize("district", ["PUNE", "KOLHAPUR", "GONDIA"])
+def test_download_button_serves_the_actual_prediction(app, district):
+    at = app.run()
+    at.selectbox[0].set_value(district).run()
+    at.button[0].click().run()
+    assert not at.exception
+    assert len(at.get("download_button")) == 1
+    shown = float(next(m.value for m in at.metric if m.label == "Predicted rice yield").split()[0])
+    # the report is built from the same call as the metric card: rebuild it and compare to the card
+    from src import report
+    p = Predictor()
+    d = data.load_dataset()
+    sub = d[d.district == district]
+    vals = dict(district=district, year=int(d.year.max()), area_ha=float(sub.area_ha.median()),
+                rain_kharif_mm=float(round(sub.rain_kharif_mm.median(), 1)),
+                temp_kharif_c=float(round(sub.temp_kharif_c.median(), 2)),
+                rh_kharif_pct=float(round(sub.rh_kharif_pct.median(), 2)))
+    rep = report.build_report(vals, max(p.predict(vals), 0.0), p.baseline_for(district))
+    assert abs(rep.iloc[0]["Predicted rice yield (tonnes/hectare)"] - shown) < 0.006
+
+
+def test_no_download_button_when_input_invalid(app):
+    at = app.run()
+    _num(at, "Cultivated area").set_value(0.0)
+    at.button[0].click().run()
+    assert len(at.get("download_button")) == 0

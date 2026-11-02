@@ -56,6 +56,13 @@ def mini_cards(cards, cols):
                                    unsafe_allow_html=True)
 
 
+def definition_list(items):
+    """items: list of (name, description) rendered as compact rows."""
+    st.markdown("".join(
+        f'<div class="def"><div class="dn">{escape(n)}</div><div class="dd">{escape(d)}</div></div>' for n, d in items),
+        unsafe_allow_html=True)
+
+
 def steps(items):
     st.markdown("".join(f'<div class="step"><div class="num">{i}</div><div class="txt">{escape(t)}</div></div>'
                         for i, t in enumerate(items, 1)), unsafe_allow_html=True)

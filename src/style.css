@@ -129,3 +129,14 @@ div[data-testid="stAlert"]:has([data-testid="stAlertContentInfo"]) { background:
 @media (max-width: 800px) {
   .page-head { padding:1rem; } .page-head h1 { font-size:1.3rem; } [data-testid="stMetricValue"] { font-size:1.6rem; }
 }
+
+/* ---------- download button (secondary action) ---------- */
+[data-testid="stDownloadButton"] button { background:#fff; color: var(--forest); border:1.5px solid var(--forest);
+  border-radius:12px; padding:.6rem 1rem; font-weight:700; box-shadow:none; }
+[data-testid="stDownloadButton"] button:hover { background: var(--mint); color: var(--forest-dark); border-color: var(--forest-dark); }
+
+/* ---------- definition rows ---------- */
+.def { display:flex; gap:.8rem; padding:.55rem 0; border-bottom:1px solid var(--line); }
+.def:last-child { border-bottom:0; }
+.def .dn { flex:0 0 7.2rem; font-weight:700; color: var(--forest); font-size:.86rem; }
+.def .dd { color: var(--ink); font-size:.84rem; line-height:1.5; }

@@ -61,6 +61,7 @@ dashboard. The system is evaluated honestly against simple baselines rather than
 | Period | Crop years 1997-98 to 2019-20 (Kharif year = start year, 1997–2019) |
 | Weather | NASA POWER daily API (MERRA-2 reanalysis): `PRECTOTCORR` (mm/day), `T2M` (°C), `RH2M` (%), 1997–2020, 298,044 daily rows for 34 districts, no missing values |
 | Locations | One representative point per district: centre of the district boundary from OpenStreetMap Nominatim (`data/raw/district_coordinates.csv`) |
+| District outlines | Polygons for the yield map from OpenStreetMap (ODbL), simplified (`data/raw/maharashtra_district_boundaries.geojson`); they show *current* boundaries |
 | Validation of the weather download | The API download for Pune's coordinates reproduced the team's reference file with zero difference on 7,671 overlapping days. The Pune file itself was *not* used as weather for other districts. |
 
 ## 8. Data Preprocessing
@@ -197,8 +198,8 @@ The pipeline is a set of re-runnable Python scripts (`fetch_coordinates.py`, `fe
 
 ## 17. Streamlit Application Features
 Run with `streamlit run app.py`. A forest-green dashboard with sidebar navigation and four pages (styling in `src/style.css`, reusable components in `src/ui.py`):
-1. **Predict yield**: choose a district, then enter year, area, rainfall, temperature and humidity (defaults are that district's historical medians). The result cards show predicted yield (t/ha), an *estimated* production (yield × area) and the district's historical average; a chart places the estimate against the district's reported history. Inputs are validated (e.g. area > 0, humidity 0–100 %), and values outside the training range show a clear extrapolation warning.
-2. **Data & trends** (4 tabs): yield over time with district overlays; district comparison (mean and range); weather vs yield scatter plots with an option to remove district averages; weather over time.
+1. **Predict yield**: choose a district, then enter year, area, rainfall, temperature and humidity (defaults are that district's historical medians). The result cards show predicted yield (t/ha), an *estimated* production (yield × area) and the district's historical average; a chart places the estimate against the district's reported history. Inputs are validated (e.g. area > 0, humidity 0–100 %), and values outside the training range show a clear extrapolation warning. An **Understanding the Prediction** section explains each input and shows permutation feature importance of the saved ANN on the 2018-19 test rows (indicating predictive reliance, not causation), and after a prediction a **Download Prediction Report** button gives a one-row CSV of the inputs, the estimate and the district average.
+2. **Data & trends** (5 tabs): yield over time with district overlays; district comparison (mean and range); a **district yield map** (shaded by mean yield, with legend, hover tooltips and district highlight); weather vs yield scatter plots with an option to remove district averages; weather over time.
 3. **Model performance** (4 tabs): metric cards, a banner stating that the ANN underperforms the baselines on the test years, the full metrics table, RMSE/R² comparison charts, actual-vs-predicted and residual plots for any model, training/validation loss curves, and ANN seed variability. All values are read from the saved Phase 3 results.
 4. **About & limitations**: overview, data sources, ANN architecture and workflow diagrams, technology stack and limitations.
 
@@ -261,4 +262,4 @@ irrigation information) rather than to a failure of the method, and the future-s
 | Data quality / preprocessing | `reports/data_quality_report.md`, `reports/preprocessing_log.md` |
 | Model results | `reports/model_evaluation_report.md`, `reports/model_comparison.csv`, `reports/predictions.csv`, `reports/ann_seed_results.csv` |
 | Saved models | `models/ann_model.keras`, `models/preprocessor.joblib`, `models/linear_regression_model.joblib`, `models/model_metadata.json` |
-| Tests | `tests/test_project.py` (28 tests) |
+| Tests | `tests/test_project.py` (40 tests) |

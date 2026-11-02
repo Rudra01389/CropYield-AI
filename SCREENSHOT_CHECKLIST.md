@@ -20,7 +20,10 @@ Use a full-width browser window; save as PNG/JPG named as below. Do not edit or 
 | 8 | ANN training vs validation loss | Same page → **Training curves** tab (or open `reports/model_plots/01_loss_curves.png`). Optional: **Seed variability** tab. | `08_loss_curve.png` |
 | 9 | About & limitations page | Sidebar → **About & limitations**; capture the **Model & workflow** tab (architecture and workflow diagrams) and the **Limitations** tab. | `09_about_*.png` |
 | 10 | Project folder structure | In VS Code Explorer (or Finder), expand the project root, `data/`, `models/`, `reports/`, `src/`, `tests/`. | `10_folder_structure.png` |
-| 11 | Tests passing | In the terminal run `python -m pytest -q` and capture the `28 passed` line. | `11_tests_passed.png` |
+| 11 | Tests passing | In the terminal run `python -m pytest -q` and capture the `40 passed` line. | `11_tests_passed.png` |
 | 12 | Architecture diagrams | Open the three PNGs in `reports/diagrams/`. | `12_diagrams.png` |
+| 13 | District yield map | Sidebar → **Data & trends → Yield map**; optionally highlight a district and hover to show the tooltip. | `13_yield_map.png` |
+| 14 | Understanding the Prediction | After a prediction, scroll to **Understanding the Prediction** (input descriptions + importance chart + caveat). | `14_understanding.png` |
+| 15 | Downloaded report | Click **Download Prediction Report**; screenshot the button and the CSV opened in Excel/Numbers. | `15_report_download.png` |
 
 Tips: take screenshots of the real running app only; the first prediction can take a few seconds while TensorFlow loads.

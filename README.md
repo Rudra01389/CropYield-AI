@@ -25,7 +25,7 @@ Open http://localhost:8501. The app uses the already-trained model in `models/`;
 
 ## 3. Run the tests (optional, ~10 s)
 ```bash
-python -m pytest -q          # expected: 28 passed
+python -m pytest -q          # expected: 40 passed
 ```
 
 ## 4. Rebuild everything from scratch (optional)
@@ -36,14 +36,22 @@ python fetch_weather.py       # daily NASA POWER weather (cached per district)  
 python preprocess.py          # clean + merge -> data/processed/*.csv, reports/data_quality_report.md, preprocessing_log.md
 python eda.py                 # EDA plots -> reports/eda/
 python train_models.py        # baseline, Linear Regression, ANN -> models/, reports/ (retrains the ANN!)
+python fetch_boundaries.py    # district outlines for the yield map (OpenStreetMap) -> data/raw/maharashtra_district_boundaries.geojson
 python make_diagrams.py       # diagrams -> reports/diagrams/
 ```
 `train_models.py` retrains and overwrites the saved models; skip it unless you want to reproduce training.
 
+## New in Phase 6
+| Feature | Where | How to use |
+|---|---|---|
+| District yield map | **Data & trends → Yield map** | Hover a district for name, mean yield, records and years; use *Highlight a district* to outline one. |
+| Understanding the Prediction | **Predict yield** (bottom of page) | Plain-language input descriptions and a permutation-importance chart computed with the saved ANN on the 2018-19 test rows. Importance shows predictive reliance, not causation. |
+| Prediction report (CSV) | **Predict yield → Download Prediction Report** | Appears after a successful prediction; one-row CSV with your inputs, the ANN estimate, estimated production and the district average. |
+
 ## Project layout
 | Path | Purpose |
 |---|---|
-| `app.py`, `src/` | Streamlit app (Predict, Data & trends, Model performance, About), model loader and input validation |
+| `app.py`, `src/` | Streamlit app (Predict, Data & trends, Model performance, About); `predictor.py` model loader and validation, `interpret.py` permutation importance, `report.py` CSV report, `data.py` loaders, `ui.py` + `style.css` look and feel |
 | `models/` | `ann_model.keras`, `preprocessor.joblib`, `linear_regression_model.joblib`, `model_metadata.json` (+ no-weather ANN) |
 | `data/` | original CSVs, `raw/` downloads, `processed/` datasets (`ann_ready_dataset.csv` = final) |
 | `reports/` | data-quality, preprocessing and model-evaluation reports, metrics CSVs, `eda/`, `model_plots/`, `diagrams/` |
